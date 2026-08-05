@@ -66,12 +66,6 @@ class NovaEngine:
         self.executor = ToolExecutor()
         self.permission_gate = PermissionGate()
 
-        # Register built-in tools
-        from tools.builtin_tools import CalculateTool, TimeTool, SystemInfoTool
-        self.registry.register_tool(CalculateTool())
-        self.registry.register_tool(TimeTool())
-        self.registry.register_tool(SystemInfoTool())
-        logger.info("Registered built-in tools: calculate_expression, get_system_time, get_system_info.")
 
         # Initialize plugins and dynamically load all discovered modules
         self.plugins = []
