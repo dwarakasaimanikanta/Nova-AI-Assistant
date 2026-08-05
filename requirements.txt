@@ -17,3 +17,6 @@ ddgs==9.14.4 # DuckDuckGo search automation tool
 sounddevice==0.5.5
 numpy>=1.20.0
 faster-whisper==1.2.1
+
+# GUI Desktop application
+PyQt6==6.11.0

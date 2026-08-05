@@ -27,10 +27,12 @@ class VoiceManager:
         stt_engine: SpeechToTextEngine | None = None,
         wake_word_enabled: bool = False,
         voice_input_enabled: bool = False,
+        on_command_callback: Any = None,
     ) -> None:
         self.engine = engine
         self.wake_word_enabled = wake_word_enabled
         self.voice_input_enabled = voice_input_enabled
+        self.on_command_callback = on_command_callback
         
         # Load STT engine
         if stt_engine:
@@ -127,6 +129,12 @@ class VoiceManager:
                             
                             # Speak response back to user
                             self.tts.execute(text=res)
+                            
+                            if self.on_command_callback:
+                                try:
+                                    self.on_command_callback(command_text, res)
+                                except Exception as cb_err:
+                                    logger.error("Error in on_command_callback: %s", cb_err)
                             
                         if self.wake_word_enabled:
                             state = "WAKING"
