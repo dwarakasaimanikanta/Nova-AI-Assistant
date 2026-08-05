@@ -28,6 +28,16 @@ else:
 DATA_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
+# MCP configuration file
+MCP_CONFIG_FILE: Path = DATA_DIR / "mcp_config.json"
+if not MCP_CONFIG_FILE.exists():
+    import json
+    try:
+        with open(MCP_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump({"mcpServers": {}}, f, indent=2)
+    except Exception:
+        pass
+
 # 2. Check and copy template .env file if it doesn't exist
 if getattr(sys, "frozen", False):
     dotenv_path = EXE_DIR / ".env"

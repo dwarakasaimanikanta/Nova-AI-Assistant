@@ -23,3 +23,6 @@ PyQt6==6.11.0
 
 # Google OAuth integration
 google-auth-oauthlib==1.4.0
+
+# Model Context Protocol SDK
+mcp==2.0.0
