@@ -60,13 +60,11 @@ class BrowserTool(BaseTool):
                 "browser_type": {
                     "type": "string",
                     "enum": ["chromium", "firefox", "webkit", "chrome", "edge"],
-                    "description": "Browser engine type (default: chromium).",
-                    "default": "chromium",
+                    "description": "Browser engine type (default: chromium)."
                 },
                 "headless": {
                     "type": "boolean",
-                    "description": "Whether to run browser in headless background mode (default: true).",
-                    "default": True,
+                    "description": "Whether to run browser in headless background mode (default: true)."
                 },
                 "url": {
                     "type": "string",
@@ -87,13 +85,11 @@ class BrowserTool(BaseTool):
                 "direction": {
                     "type": "string",
                     "enum": ["up", "down"],
-                    "description": "Scroll direction (default: down).",
-                    "default": "down",
+                    "description": "Scroll direction (default: down)."
                 },
                 "amount": {
                     "type": "integer",
-                    "description": "Number of pixels to scroll (default: 500).",
-                    "default": 500,
+                    "description": "Number of pixels to scroll (default: 500)."
                 },
                 "filename": {
                     "type": "string",

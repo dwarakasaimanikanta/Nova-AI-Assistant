@@ -59,8 +59,7 @@ class GmailTool(BaseTool):
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": "Maximum number of email threads to fetch (default: 5).",
-                    "default": 5,
+                    "description": "Maximum number of email threads to fetch (default: 5)."
                 },
             },
             "required": ["action"],

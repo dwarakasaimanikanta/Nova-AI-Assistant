@@ -44,8 +44,7 @@ class DriveTool(BaseTool):
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": "Maximum number of files to return (default: 10).",
-                    "default": 10,
+                    "description": "Maximum number of files to return (default: 10)."
                 },
             },
             "required": ["action"],

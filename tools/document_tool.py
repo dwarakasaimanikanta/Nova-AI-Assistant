@@ -71,8 +71,7 @@ class DocumentTool(BaseTool):
                 },
                 "top_k": {
                     "type": "integer",
-                    "description": "Number of semantic chunks to return (default: 3).",
-                    "default": 3,
+                    "description": "Number of semantic chunks to return (default: 3)."
                 },
             },
             "required": ["action"],

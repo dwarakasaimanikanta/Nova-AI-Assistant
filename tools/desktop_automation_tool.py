@@ -71,13 +71,11 @@ class DesktopAutomationTool(BaseTool):
                 "button": {
                     "type": "string",
                     "enum": ["left", "right", "middle"],
-                    "description": "Mouse button (default: left).",
-                    "default": "left",
+                    "description": "Mouse button (default: left)."
                 },
                 "clicks": {
                     "type": "integer",
-                    "description": "Number of mouse clicks (default: 1).",
-                    "default": 1,
+                    "description": "Number of mouse clicks (default: 1)."
                 },
                 "text": {
                     "type": "string",
