@@ -1,0 +1,12 @@
+# Nova AI Assistant - Python Dependencies
+#
+# This file only lists what is needed for the CURRENT phase
+# (Phase 1: Project Foundation). Libraries for voice, memory,
+# automation, and GUI will be added in later phases so the
+# environment stays lightweight and easy to understand.
+#
+# Install with:
+#   pip install -r requirements.txt
+
+python-dotenv==1.0.1   # Loads environment variables from a .env file
+rich==13.7.1            # Nicer console output (used from Phase 1 onward for CLI)
