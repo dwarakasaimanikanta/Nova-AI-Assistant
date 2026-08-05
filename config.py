@@ -9,21 +9,41 @@ from pathlib import Path
 import shutil
 from dotenv import load_dotenv
 
+import sys
+
 # 1. Base paths
-BASE_DIR: Path = Path(__file__).resolve().parent
-DATA_DIR: Path = BASE_DIR / "data"
-LOGS_DIR: Path = BASE_DIR / "logs"
+if getattr(sys, "frozen", False):
+    # Running inside a PyInstaller bundle
+    BASE_DIR: Path = Path(sys._MEIPASS).resolve()
+    EXE_DIR: Path = Path(sys.executable).parent.resolve()
+    DATA_DIR: Path = EXE_DIR / "data"
+    LOGS_DIR: Path = EXE_DIR / "logs"
+else:
+    # Running in standard python development
+    BASE_DIR: Path = Path(__file__).resolve().parent
+    DATA_DIR: Path = BASE_DIR / "data"
+    LOGS_DIR: Path = BASE_DIR / "logs"
 
 # Ensure critical runtime folders always exist
 DATA_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
 # 2. Check and copy template .env file if it doesn't exist
-dotenv_path = BASE_DIR / ".env"
-if not dotenv_path.exists():
-    example_path = BASE_DIR / ".env.example"
-    if example_path.exists():
-        shutil.copy(example_path, dotenv_path)
+if getattr(sys, "frozen", False):
+    dotenv_path = EXE_DIR / ".env"
+    if not dotenv_path.exists():
+        example_path = BASE_DIR / ".env.example"
+        if example_path.exists():
+            try:
+                shutil.copy(example_path, dotenv_path)
+            except Exception:
+                pass
+else:
+    dotenv_path = BASE_DIR / ".env"
+    if not dotenv_path.exists():
+        example_path = BASE_DIR / ".env.example"
+        if example_path.exists():
+            shutil.copy(example_path, dotenv_path)
 
 # 3. Explicitly load variables only from the project .env file
 load_dotenv(dotenv_path=dotenv_path)
