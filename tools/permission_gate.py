@@ -72,6 +72,12 @@ class PermissionGate:
                 effective_risk = RiskLevel.LOW
             else:
                 effective_risk = RiskLevel.HIGH
+        elif tool.name == "code_helper":
+            action = args.get("action")
+            if action == "parse_code":
+                effective_risk = RiskLevel.LOW
+            else:
+                effective_risk = RiskLevel.HIGH
 
         if effective_risk != RiskLevel.HIGH:
             # Low and Medium risk tools are approved automatically
