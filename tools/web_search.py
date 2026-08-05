@@ -6,7 +6,7 @@ Conforms to the BaseTool interface.
 """
 
 from typing import Any
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 from tools.base_tool import BaseTool, RiskLevel
 from utils.logger import get_logger
