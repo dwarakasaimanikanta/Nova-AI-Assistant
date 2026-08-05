@@ -122,7 +122,6 @@ class AgentPlanner:
             else:
                 llm_generation_time += selection_latency
 
-            # Check if model requested any tool calls
             if response.function_calls:
                 # Log model's execution intent in payload and short-term memory
                 self.memory.add_message(role="assistant", function_calls=response.function_calls)
@@ -140,6 +139,7 @@ class AgentPlanner:
                 should_direct_return = False
                 direct_response = ""
 
+                tool_parts = []
                 # Process all requested function calls sequentially
                 for fc in response.function_calls:
                     tool_name = fc["name"]
@@ -158,20 +158,30 @@ class AgentPlanner:
                             # Run tool
                             result = self.executor.execute_tool(tool, args)
 
-                    # Append execution output back into payload and memory
+                    # Append execution output back into memory sequentially
                     self.memory.add_message(role="tool", content=result, name=tool_name)
-                    history_payload.append({
-                        "role": "tool",
-                        "name": tool_name,
-                        "content": result,
-                    })
                     results.append(result)
 
+                    # Add response part to the grouped payload list
+                    tool_parts.append({
+                        "function_response": {
+                            "name": tool_name,
+                            "response": {"result": result}
+                        }
+                    })
+
                     # Optimize: If a local deterministic tool already returns a full human-readable response, skip subsequent LLM turn
-                    direct_return_tools = {"calculate_expression", "get_system_time", "get_system_info", "file_manager", "browser", "terminal"}
+                    direct_return_tools = {"calculate_expression", "get_system_time", "get_system_info", "file_manager", "browser", "terminal", "memory"}
                     if tool_name in direct_return_tools:
                         should_direct_return = True
                         direct_response = result
+
+                # Append the grouped tool responses as a single message to history_payload
+                if tool_parts:
+                    history_payload.append({
+                        "role": "user",
+                        "parts": tool_parts
+                    })
 
                 tool_execution_time += time.perf_counter() - start_tool_exec
 
