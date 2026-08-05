@@ -27,8 +27,14 @@ class LLMProviderFactory:
 
         if name == "gemini":
             return GeminiProvider(api_key=api_key)
+        elif name == "ollama":
+            from llm.ollama_provider import OllamaProvider
+            return OllamaProvider(model_name=api_key or "llama3")
+        elif name == "routing":
+            from llm.routing_provider import RoutingLLMProvider
+            return RoutingLLMProvider(gemini_key=api_key)
         else:
             raise ValueError(
                 f"Unsupported LLM provider: '{provider_name}'. "
-                "Only 'gemini' is supported at this stage."
+                "Supported options are 'gemini', 'ollama', and 'routing'."
             )

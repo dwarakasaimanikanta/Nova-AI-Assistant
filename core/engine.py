@@ -76,9 +76,13 @@ class NovaEngine:
 
         # Initialize LLM Brain / Agentic Planner if configured in environment
         self.conversation = None
-        if GEMINI_API_KEY:
-            try:
-                provider = LLMProviderFactory.get_provider("gemini", GEMINI_API_KEY)
+        try:
+            # Check if either Gemini key is set or local Ollama is healthy
+            from llm.local_llm_manager import LocalLLMManager
+            local_manager = LocalLLMManager()
+            
+            if GEMINI_API_KEY or local_manager.is_healthy():
+                provider = LLMProviderFactory.get_provider("routing", GEMINI_API_KEY)
                 self.conversation = AgentPlanner(
                     provider=provider,
                     memory=self.memory,
@@ -86,11 +90,11 @@ class NovaEngine:
                     executor=self.executor,
                     permission_gate=self.permission_gate,
                 )
-                logger.info("AgentPlanner initialized successfully using Gemini.")
-            except Exception as e:
-                logger.exception("Failed to initialize AgentPlanner: %s", e)
-        else:
-            logger.warning("GEMINI_API_KEY not found in environment. Running in offline/echo fallback mode.")
+                logger.info("AgentPlanner initialized successfully using Routing LLM Provider.")
+            else:
+                logger.warning("No online or local LLM pathways detected at startup. Running in offline/echo fallback mode.")
+        except Exception as e:
+            logger.exception("Failed to initialize AgentPlanner with Routing Provider: %s", e)
 
     def load_plugin(self, plugin: Any) -> None:
         """

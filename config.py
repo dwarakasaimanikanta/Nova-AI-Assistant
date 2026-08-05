@@ -116,3 +116,8 @@ VOICE_MODEL_SIZE: str = os.getenv("VOICE_MODEL_SIZE", "tiny").strip()
 
 # Vision configuration
 TESSERACT_CMD: str | None = os.getenv("TESSERACT_CMD", None)
+
+# Local AI configuration
+OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434").strip()
+FORCE_LLM_PROVIDER: str | None = os.getenv("FORCE_LLM_PROVIDER", None)
+FORCE_LLM_MODEL: str | None = os.getenv("FORCE_LLM_MODEL", None)
