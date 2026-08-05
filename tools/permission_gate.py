@@ -84,6 +84,12 @@ class PermissionGate:
                 effective_risk = RiskLevel.LOW
             else:
                 effective_risk = RiskLevel.HIGH
+        elif tool.name == "browser_agent":
+            action = args.get("action")
+            if action in ("open_url", "search_google", "extract_text"):
+                effective_risk = RiskLevel.LOW
+            else:
+                effective_risk = RiskLevel.HIGH
 
         if effective_risk != RiskLevel.HIGH:
             # Low and Medium risk tools are approved automatically
