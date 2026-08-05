@@ -51,6 +51,21 @@ class PermissionGate:
                 effective_risk = RiskLevel.LOW
             else:
                 effective_risk = RiskLevel.HIGH
+        elif tool.name == "terminal":
+            command = args.get("command", "").strip().lower()
+            parts = command.split()
+            base_cmd = parts[0] if parts else ""
+            
+            # Identify low-risk status and read-only commands
+            low_risk_commands = {"pwd", "dir"}
+            low_risk_git_subcommands = {"status", "log", "diff", "branch", "show"}
+            
+            if base_cmd == "git" and len(parts) > 1 and parts[1] in low_risk_git_subcommands:
+                effective_risk = RiskLevel.LOW
+            elif base_cmd in low_risk_commands:
+                effective_risk = RiskLevel.LOW
+            else:
+                effective_risk = RiskLevel.HIGH
 
         if effective_risk != RiskLevel.HIGH:
             # Low and Medium risk tools are approved automatically

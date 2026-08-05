@@ -127,6 +127,28 @@ class NovaEngine:
         # 1. Log the user's message in memory
         self.memory.add_message(role="user", content=cleaned_input)
 
+        # Route shell commands directly to TerminalTool to prevent LLM routing/hallucination errors
+        parts = cleaned_input.split()
+        base_cmd = parts[0].lower() if parts else ""
+        shell_commands = {"mkdir", "rmdir", "cd", "dir", "git", "python", "pip", "pwd"}
+
+        if base_cmd in shell_commands:
+            tool = self.registry.get_tool("terminal")
+            if tool:
+                args = {"command": cleaned_input}
+                # Safety verification gate check
+                if not self.permission_gate.check_permission(tool, args):
+                    response = f"Permission Denied: User refused execution of command '{cleaned_input}'."
+                else:
+                    response = self.executor.execute_tool(tool, args)
+
+                self.memory.add_message(role="assistant", content=response)
+                if stream:
+                    def direct_gen() -> Generator[str, None, None]:
+                        yield response
+                    return direct_gen()
+                return response
+
         # 2. Find a matching specific command skill (excluding EchoSkill fallback)
         response = None
         for skill in self.skills:

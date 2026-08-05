@@ -58,22 +58,6 @@ class AgentPlanner:
         Returns:
             The string response or a generator of string chunks.
         """
-        # Prevent routing Git commands to the LLM to avoid tool hallucination / FileManager calls
-        cleaned_input = user_input.strip().lower()
-        if cleaned_input.startswith("git ") or cleaned_input == "git":
-            response_text = (
-                "It looks like you typed a Git command, but I am an AI assistant "
-                "and do not have direct access to your local terminal or Git repository.\n\n"
-                "To run this command, please open your local terminal, command prompt, "
-                "or Git Bash in your project directory and execute it there!"
-            )
-            self.memory.add_message(role="assistant", content=response_text)
-            if stream:
-                def git_gen() -> Generator[str, None, None]:
-                    yield response_text
-                return git_gen()
-            return response_text
-
         start_planning = time.perf_counter()
 
         # Metrics trackers
@@ -184,7 +168,7 @@ class AgentPlanner:
                     results.append(result)
 
                     # Optimize: If a local deterministic tool already returns a full human-readable response, skip subsequent LLM turn
-                    direct_return_tools = {"calculate_expression", "get_system_time", "get_system_info", "file_manager", "browser"}
+                    direct_return_tools = {"calculate_expression", "get_system_time", "get_system_info", "file_manager", "browser", "terminal"}
                     if tool_name in direct_return_tools:
                         should_direct_return = True
                         direct_response = result
