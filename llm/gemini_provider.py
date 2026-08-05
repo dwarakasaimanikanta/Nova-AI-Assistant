@@ -31,9 +31,9 @@ class GeminiProvider(BaseLLMProvider):
             raise ValueError("Gemini API Key is required to instantiate GeminiProvider.")
 
         self.model_name = model_name
-        genai.configure(api_key=api_key)
+        genai.configure(api_key=api_key, transport="rest")
         self.model = genai.GenerativeModel(model_name)
-        logger.info("GeminiProvider configured successfully with model: %s", model_name)
+        logger.info("GeminiProvider configured successfully with model: %s (transport: rest)", model_name)
 
     def _convert_messages(self, messages: list[dict[str, Any]]) -> list[Any]:
         """
@@ -123,10 +123,10 @@ class GeminiProvider(BaseLLMProvider):
             model = self.model
 
         if stream:
-            response = model.generate_content(contents, stream=True)
+            response = model.generate_content(contents, stream=True, request_options={"timeout": 60.0})
             return (chunk.text for chunk in response)
         else:
-            response = model.generate_content(contents)
+            response = model.generate_content(contents, request_options={"timeout": 60.0})
 
             # Check for function calls
             function_calls = []
@@ -135,9 +135,11 @@ class GeminiProvider(BaseLLMProvider):
                 raw_content = response.candidates[0].content
                 for part in response.candidates[0].content.parts:
                     if part.function_call:
+                        # Ensure every parsed function call gets a completely fresh args dictionary
+                        parsed_args = {k: v for k, v in part.function_call.args.items()}
                         function_calls.append({
                             "name": part.function_call.name,
-                            "args": dict(part.function_call.args),
+                            "args": parsed_args,
                         })
 
             # Safely extract text (raises ValueError if there are only function calls)

@@ -44,7 +44,15 @@ class PermissionGate:
         Returns:
             True if execution is permitted, False otherwise.
         """
-        if tool.risk_level != RiskLevel.HIGH:
+        effective_risk = tool.risk_level
+        if tool.name == "file_manager":
+            action = args.get("action")
+            if action in ("read", "list"):
+                effective_risk = RiskLevel.LOW
+            else:
+                effective_risk = RiskLevel.HIGH
+
+        if effective_risk != RiskLevel.HIGH:
             # Low and Medium risk tools are approved automatically
             return True
 

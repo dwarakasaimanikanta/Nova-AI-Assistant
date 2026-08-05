@@ -19,7 +19,7 @@ def test_provider_factory() -> None:
     with patch("google.generativeai.configure") as mock_conf:
         provider = LLMProviderFactory.get_provider("gemini", "mock-api-key")
         assert isinstance(provider, GeminiProvider)
-        mock_conf.assert_called_once_with(api_key="mock-api-key")
+        mock_conf.assert_called_once_with(api_key="mock-api-key", transport="rest")
 
     with pytest.raises(ValueError):
         LLMProviderFactory.get_provider("invalid-provider", "key")

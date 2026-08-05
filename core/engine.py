@@ -73,6 +73,13 @@ class NovaEngine:
         self.registry.register_tool(SystemInfoTool())
         logger.info("Registered built-in tools: calculate_expression, get_system_time, get_system_info.")
 
+        # Initialize plugins and dynamically load all discovered modules
+        self.plugins = []
+        from plugins.loader import PluginLoader
+        loader = PluginLoader()
+        for plugin in loader.discover_and_load_plugins():
+            self.load_plugin(plugin)
+
         # Initialize LLM Brain / Agentic Planner if configured in environment
         self.conversation = None
         if GEMINI_API_KEY:
@@ -90,6 +97,18 @@ class NovaEngine:
                 logger.exception("Failed to initialize AgentPlanner: %s", e)
         else:
             logger.warning("GEMINI_API_KEY not found in environment. Running in offline/echo fallback mode.")
+
+    def load_plugin(self, plugin: Any) -> None:
+        """
+        Load a plugin module, registering all of its tools dynamically.
+
+        Args:
+            plugin: An instance of BasePlugin.
+        """
+        self.plugins.append(plugin)
+        for tool in plugin.get_tools():
+            self.registry.register_tool(tool)
+        logger.info("Loaded plugin '%s' providing %d tools.", plugin.name, len(plugin.get_tools()))
 
     def handle_input(self, user_input: str, stream: bool = False) -> str | Generator[str, None, None]:
         """

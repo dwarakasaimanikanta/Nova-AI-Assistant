@@ -27,6 +27,7 @@ class NovaCLI:
         """
         self.engine = engine
         self.console = Console()
+        self._current_status = None
         # Register the security permission callback with the safety gate
         self.engine.permission_gate.set_callback(self.request_permission)
 
@@ -65,20 +66,42 @@ class NovaCLI:
         Returns:
             True if permission is granted, False otherwise.
         """
-        self.console.print(f"\n[bold red]⚠️  Security Alert:[/bold red] Nova wants to execute tool [bold cyan]{tool_name}[/bold cyan]")
+        # Temporarily stop status spinner to allow clean input prompt on stdout/stdin
+        active_status = getattr(self, "_current_status", None)
+        if active_status:
+            active_status.stop()
+
+        import sys
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        self.console.print(f"\n[bold red][Security Check][/bold red] Nova wants to execute tool [bold cyan]{tool_name}[/bold cyan]")
         self.console.print(f"[dim]Arguments:[/dim] {args}")
         self.console.print("[bold yellow]Allow execution? (y/N): [/bold yellow]", end="")
+        
+        if hasattr(self.console, "file") and self.console.file:
+            try:
+                self.console.file.flush()
+            except Exception:
+                pass
+        sys.stdout.flush()
+
         try:
             choice = input().strip().lower()
             allowed = choice in ("y", "yes")
             if allowed:
-                self.console.print("[green]✓ Permission granted.[/green]\n")
+                self.console.print("[green][Permission Granted][/green]\n")
             else:
-                self.console.print("[red]✗ Permission denied.[/red]\n")
-            return allowed
-        except (KeyboardInterrupt, EOFError):
-            self.console.print("\n[red]✗ Permission denied (interrupt).[/red]\n")
-            return False
+                self.console.print("[red][Permission Denied][/red]\n")
+        except EOFError:
+            self.console.print("\n[red][Permission Denied (EOF)][/red]\n")
+            allowed = False
+        finally:
+            # Resume status spinner if it was active
+            if active_status:
+                active_status.start()
+
+        return allowed
 
     def run(self) -> None:
         """Start the continuous user chat loop."""
@@ -109,8 +132,8 @@ class NovaCLI:
                     use_stream = self.engine.conversation is not None
 
                     if use_stream:
-                        status = self.console.status("[dim white]Nova is thinking...[/dim white]")
-                        status.start()
+                        self._current_status = self.console.status("[dim white]Nova is thinking...[/dim white]", spinner="line")
+                        self._current_status.start()
                         try:
                             # 1. Fetch generator from the core engine
                             response_gen = self.engine.handle_input(user_input, stream=True)
@@ -122,7 +145,7 @@ class NovaCLI:
                             for chunk in response_gen:
                                 if first_chunk:
                                     # Terminate spinner immediately when the first token arrives
-                                    status.stop()
+                                    self._current_status.stop()
                                     self.console.print("[bold cyan]Nova:[/bold cyan] ", end="")
                                     first_chunk = False
 
@@ -131,11 +154,19 @@ class NovaCLI:
                                 self.console.print(safe_chunk, end="")
                             self.console.print()
                         finally:
-                            status.stop()
+                            if self._current_status:
+                                self._current_status.stop()
+                            self._current_status = None
                     else:
                         # Fallback for local commands / echo skills
-                        with self.console.status("[dim white]Nova is thinking...[/dim white]"):
+                        self._current_status = self.console.status("[dim white]Nova is thinking...[/dim white]", spinner="line")
+                        self._current_status.start()
+                        try:
                             response = self.engine.handle_input(user_input, stream=False)
+                        finally:
+                            if self._current_status:
+                                self._current_status.stop()
+                            self._current_status = None
 
                         console_encoding = self.console.file.encoding or "utf-8"
                         safe_response = response.encode(console_encoding, errors="ignore").decode(console_encoding)

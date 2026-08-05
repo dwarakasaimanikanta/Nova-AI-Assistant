@@ -78,3 +78,59 @@ def test_permission_gate_high_risk_callback_approval() -> None:
     # Callback refusing the query
     gate.set_callback(lambda name, args: False)
     assert gate.check_permission(tool, {}) is False
+
+
+def test_cli_request_permission_y() -> None:
+    """Ensure y returns True in CLI prompt."""
+    from unittest.mock import patch
+    from interface.cli import NovaCLI
+    from core.engine import NovaEngine
+    from memory.short_term import ShortTermMemory
+
+    engine = NovaEngine(memory=ShortTermMemory())
+    cli = NovaCLI(engine)
+
+    with patch("builtins.input", return_value="y"):
+        assert cli.request_permission("file_manager", {"action": "delete"}) is True
+
+
+def test_cli_request_permission_yes() -> None:
+    """Ensure yes returns True in CLI prompt."""
+    from unittest.mock import patch
+    from interface.cli import NovaCLI
+    from core.engine import NovaEngine
+    from memory.short_term import ShortTermMemory
+
+    engine = NovaEngine(memory=ShortTermMemory())
+    cli = NovaCLI(engine)
+
+    with patch("builtins.input", return_value="yes"):
+        assert cli.request_permission("file_manager", {"action": "delete"}) is True
+
+
+def test_cli_request_permission_n() -> None:
+    """Ensure n returns False in CLI prompt."""
+    from unittest.mock import patch
+    from interface.cli import NovaCLI
+    from core.engine import NovaEngine
+    from memory.short_term import ShortTermMemory
+
+    engine = NovaEngine(memory=ShortTermMemory())
+    cli = NovaCLI(engine)
+
+    with patch("builtins.input", return_value="n"):
+        assert cli.request_permission("file_manager", {"action": "delete"}) is False
+
+
+def test_cli_request_permission_no() -> None:
+    """Ensure no returns False in CLI prompt."""
+    from unittest.mock import patch
+    from interface.cli import NovaCLI
+    from core.engine import NovaEngine
+    from memory.short_term import ShortTermMemory
+
+    engine = NovaEngine(memory=ShortTermMemory())
+    cli = NovaCLI(engine)
+
+    with patch("builtins.input", return_value="no"):
+        assert cli.request_permission("file_manager", {"action": "delete"}) is False
