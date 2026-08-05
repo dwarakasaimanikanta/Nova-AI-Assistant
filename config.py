@@ -28,6 +28,10 @@ else:
 DATA_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
+# Screen captures storage folder
+SCREENSHOTS_DIR: Path = DATA_DIR / "screenshots"
+SCREENSHOTS_DIR.mkdir(exist_ok=True)
+
 # MCP configuration file
 MCP_CONFIG_FILE: Path = DATA_DIR / "mcp_config.json"
 if not MCP_CONFIG_FILE.exists():
@@ -109,3 +113,6 @@ DEBUG: bool = ENVIRONMENT == "development"
 VOICE_INPUT_ENABLED: bool = os.getenv("VOICE_INPUT_ENABLED", "false").strip().lower() == "true"
 WAKE_WORD_ENABLED: bool = os.getenv("WAKE_WORD_ENABLED", "false").strip().lower() == "true"
 VOICE_MODEL_SIZE: str = os.getenv("VOICE_MODEL_SIZE", "tiny").strip()
+
+# Vision configuration
+TESSERACT_CMD: str | None = os.getenv("TESSERACT_CMD", None)
