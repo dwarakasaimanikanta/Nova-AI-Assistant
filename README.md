@@ -16,7 +16,7 @@ the next layer is added. See [ROADMAP.md](./ROADMAP.md) for the full plan.
 
 At this stage, Nova is integrated with a generic, swappable LLM abstraction layer backed by the **Google Gemini API**. It features:
 * A generic base provider interface ([llm/base_provider.py](file:///c:/Users/asus/OneDrive/Desktop/nova/llm/base_provider.py)).
-* A concrete Google Gemini client backend wrapper ([llm/gemini_provider.py](file:///c:/Users/asus/OneDrive/Desktop/nova/llm/gemini_provider.py)) executing requests against the `gemini-3.6-flash` model.
+* A concrete Google Gemini client backend wrapper ([llm/gemini_provider.py](file:///c:/Users/asus/OneDrive/Desktop/nova/llm/gemini_provider.py)) executing requests against the `gemini-3.5-flash-lite` model.
 * An extensible provider factory ([llm/provider_factory.py](file:///c:/Users/asus/OneDrive/Desktop/nova/llm/provider_factory.py)) to spawn vendors.
 * A robust conversational coordinator ([llm/conversation.py](file:///c:/Users/asus/OneDrive/Desktop/nova/llm/conversation.py)) that synchronizes chat histories and intercepts API exception events to prevent Nova from crashing.
 * Local fallback logic: if `GEMINI_API_KEY` is not present, Nova defaults back to `EchoSkill` offline mode with an operational setup reminder.

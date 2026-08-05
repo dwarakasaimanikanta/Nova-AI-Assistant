@@ -15,7 +15,9 @@ class Message:
     """Represents a single message in the conversation history."""
 
     role: str
-    content: str
+    content: str | None = None
+    function_calls: list[dict] | None = None
+    name: str | None = None
 
 
 class ShortTermMemory:
@@ -26,17 +28,25 @@ class ShortTermMemory:
         self._history: list[Message] = []
         logger.debug("Short-term memory initialized.")
 
-    def add_message(self, role: str, content: str) -> None:
+    def add_message(
+        self,
+        role: str,
+        content: str | None = None,
+        function_calls: list[dict] | None = None,
+        name: str | None = None,
+    ) -> None:
         """
         Add a message to the history.
 
         Args:
             role: The author of the message (e.g. 'user', 'assistant').
             content: The text content of the message.
+            function_calls: The requested tool calls.
+            name: The tool name if it is a tool response.
         """
-        message = Message(role=role, content=content)
+        message = Message(role=role, content=content, function_calls=function_calls, name=name)
         self._history.append(message)
-        logger.debug("Added message to short-term memory: %s -> %s", role, content)
+        logger.debug("Added message to short-term memory: %s (has_content: %s, has_calls: %s)", role, content is not None, function_calls is not None)
 
     def get_history(self) -> list[Message]:
         """

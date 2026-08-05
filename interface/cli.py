@@ -1,9 +1,10 @@
 """
 interface/cli.py
 ----------------
-Command-line interface and terminal user interaction for Nova.
+Command-line interface and terminal user interaction for Nova supporting permission queries.
 """
 
+from typing import Any
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -19,13 +20,15 @@ class NovaCLI:
 
     def __init__(self, engine: NovaEngine) -> None:
         """
-        Initialize the CLI with the core engine.
+        Initialize the CLI with the core engine and register safety gates.
 
         Args:
             engine: An instance of NovaEngine.
         """
         self.engine = engine
         self.console = Console()
+        # Register the security permission callback with the safety gate
+        self.engine.permission_gate.set_callback(self.request_permission)
 
     def show_banner(self) -> None:
         """Render a premium starting banner for Nova AI Assistant."""
@@ -50,6 +53,32 @@ class NovaCLI:
         self.console.clear()
         self.show_banner()
         logger.info("Terminal screen cleared.")
+
+    def request_permission(self, tool_name: str, args: dict[str, Any]) -> bool:
+        """
+        Intercept high-risk tool actions and prompt the user in the console for approval.
+
+        Args:
+            tool_name: The name of the tool to execute.
+            args: The arguments passed to the tool.
+
+        Returns:
+            True if permission is granted, False otherwise.
+        """
+        self.console.print(f"\n[bold red]⚠️  Security Alert:[/bold red] Nova wants to execute tool [bold cyan]{tool_name}[/bold cyan]")
+        self.console.print(f"[dim]Arguments:[/dim] {args}")
+        self.console.print("[bold yellow]Allow execution? (y/N): [/bold yellow]", end="")
+        try:
+            choice = input().strip().lower()
+            allowed = choice in ("y", "yes")
+            if allowed:
+                self.console.print("[green]✓ Permission granted.[/green]\n")
+            else:
+                self.console.print("[red]✗ Permission denied.[/red]\n")
+            return allowed
+        except (KeyboardInterrupt, EOFError):
+            self.console.print("\n[red]✗ Permission denied (interrupt).[/red]\n")
+            return False
 
     def run(self) -> None:
         """Start the continuous user chat loop."""

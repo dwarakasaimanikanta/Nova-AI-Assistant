@@ -1,7 +1,7 @@
 """
 core/engine.py
 --------------
-Main engine logic and coordination for the Nova AI Assistant.
+Main engine logic and coordination for the Nova AI Assistant supporting tool calling.
 """
 
 from collections.abc import Generator
@@ -15,14 +15,17 @@ from skills.time_skill import TimeSkill
 from skills.calculator_skill import CalculatorSkill
 from skills.system_info_skill import SystemInfoSkill
 from llm.provider_factory import LLMProviderFactory
-from llm.conversation import LLMConversation
+from core.planner import AgentPlanner
+from tools.registry import ToolRegistry
+from tools.executor import ToolExecutor
+from tools.permission_gate import PermissionGate
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class NovaEngine:
-    """The central brain of Nova, orchestrating memory and skills."""
+    """The central brain of Nova, orchestrating memory, skills, and tools."""
 
     def __init__(
         self,
@@ -30,7 +33,7 @@ class NovaEngine:
         skills: list[BaseSkill] | None = None,
     ) -> None:
         """
-        Initialize the engine with a memory store and a list of skills.
+        Initialize the engine with a memory store, a list of skills, and tools.
 
         Args:
             memory: An instance of ShortTermMemory.
@@ -38,7 +41,7 @@ class NovaEngine:
         """
         self.memory = memory
         if skills is None:
-            # Auto-register all built-in skills for Phase 3
+            # Auto-register all built-in skills for Phase 3 (offline capability)
             help_skill = HelpSkill()
             self.skills = [
                 help_skill,
@@ -58,15 +61,33 @@ class NovaEngine:
                     skill.set_skills(self.skills)
             logger.info("Engine initialized with %d custom skills.", len(skills))
 
-        # Initialize LLM Brain if configured in environment
+        # Initialize Tool calling subsystems
+        self.registry = ToolRegistry()
+        self.executor = ToolExecutor()
+        self.permission_gate = PermissionGate()
+
+        # Register built-in tools
+        from tools.builtin_tools import CalculateTool, TimeTool, SystemInfoTool
+        self.registry.register_tool(CalculateTool())
+        self.registry.register_tool(TimeTool())
+        self.registry.register_tool(SystemInfoTool())
+        logger.info("Registered built-in tools: calculate_expression, get_system_time, get_system_info.")
+
+        # Initialize LLM Brain / Agentic Planner if configured in environment
         self.conversation = None
         if GEMINI_API_KEY:
             try:
                 provider = LLMProviderFactory.get_provider("gemini", GEMINI_API_KEY)
-                self.conversation = LLMConversation(provider=provider, memory=self.memory)
-                logger.info("LLM Conversation brain initialized successfully using Gemini.")
+                self.conversation = AgentPlanner(
+                    provider=provider,
+                    memory=self.memory,
+                    registry=self.registry,
+                    executor=self.executor,
+                    permission_gate=self.permission_gate,
+                )
+                logger.info("AgentPlanner initialized successfully using Gemini.")
             except Exception as e:
-                logger.exception("Failed to initialize LLM Provider: %s", e)
+                logger.exception("Failed to initialize AgentPlanner: %s", e)
         else:
             logger.warning("GEMINI_API_KEY not found in environment. Running in offline/echo fallback mode.")
 
@@ -101,9 +122,8 @@ class NovaEngine:
                     response = f"An error occurred while executing the {skill.name} skill."
                 break
 
-        # 3. If no command skill matched, try to route to the AI LLM Brain
+        # 3. If no command skill matched, try to route to the AI Agentic Planner
         if response is None and self.conversation is not None:
-            # Let conversation handle streaming if requested
             return self.conversation.ask(cleaned_input, stream=stream)
 
         # 4. Fallback to EchoSkill if LLM is not active and no other skill matched
@@ -116,7 +136,7 @@ class NovaEngine:
                 logger.warning("No skill or LLM matched the input: '%s'", cleaned_input)
                 response = "I'm sorry, I don't know how to handle that request yet."
 
-        # 5. Log non-streaming response in memory (streaming response is logged dynamically inside the generator)
+        # 5. Log non-streaming response in memory (streaming response is logged dynamically inside the planner)
         self.memory.add_message(role="assistant", content=response)
 
         # If streaming was requested but we hit a local command or fallback, return it as a single chunk generator
