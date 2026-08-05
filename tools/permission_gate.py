@@ -66,6 +66,12 @@ class PermissionGate:
                 effective_risk = RiskLevel.LOW
             else:
                 effective_risk = RiskLevel.HIGH
+        elif tool.name == "system_control":
+            action = args.get("action")
+            if action == "launch_app":
+                effective_risk = RiskLevel.LOW
+            else:
+                effective_risk = RiskLevel.HIGH
 
         if effective_risk != RiskLevel.HIGH:
             # Low and Medium risk tools are approved automatically
