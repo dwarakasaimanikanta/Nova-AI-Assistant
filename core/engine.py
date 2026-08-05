@@ -102,6 +102,14 @@ class NovaEngine:
         self.plugins.append(plugin)
         for tool in plugin.get_tools():
             self.registry.register_tool(tool)
+        
+        # Initialize the plugin if it defines initialize_plugin hook
+        if hasattr(plugin, "initialize_plugin"):
+            try:
+                plugin.initialize_plugin(self)
+            except Exception as e:
+                logger.error("Failed to run initialize_plugin hook for plugin %s: %s", plugin.name, e)
+
         logger.info("Loaded plugin '%s' providing %d tools.", plugin.name, len(plugin.get_tools()))
 
     def handle_input(self, user_input: str, stream: bool = False) -> str | Generator[str, None, None]:

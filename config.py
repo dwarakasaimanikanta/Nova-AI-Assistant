@@ -74,3 +74,8 @@ SEARCH_API_KEY: str | None = _get_env_key("SEARCH_API_KEY")
 # Environment / mode
 ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 DEBUG: bool = ENVIRONMENT == "development"
+
+# Voice configuration
+VOICE_INPUT_ENABLED: bool = os.getenv("VOICE_INPUT_ENABLED", "false").strip().lower() == "true"
+WAKE_WORD_ENABLED: bool = os.getenv("WAKE_WORD_ENABLED", "false").strip().lower() == "true"
+VOICE_MODEL_SIZE: str = os.getenv("VOICE_MODEL_SIZE", "tiny").strip()
