@@ -45,8 +45,11 @@ def test_engine_memory_registration() -> None:
     assert engine.registry.get_tool("memory") is not None
 
 
-def test_memory_crud_operations(tmp_path: Path) -> None:
+def test_memory_crud_operations(tmp_path: Path, monkeypatch) -> None:
     """Ensure MemoryTool supports storing, updating, retrieving and listing facts on a tmp file."""
+    # Prevent real API calls for embeddings during crud tests
+    monkeypatch.setattr(MemoryTool, "_get_embedding", lambda self, text: None)
+
     db_file = tmp_path / "long_term_memory_test.json"
     tool = MemoryTool(filepath=db_file)
 
@@ -73,11 +76,17 @@ def test_memory_crud_operations(tmp_path: Path) -> None:
     assert "name: Arjun" in list_res
     assert "studies: Computer Science" in list_res
 
-    # 5. Verify file persistence on disk
-    assert db_file.exists()
-    with open(db_file, "r", encoding="utf-8") as f:
-        stored_dict = json.load(f)
-    assert stored_dict == {"name": "Arjun", "studies": "Computer Science"}
+    # 5. Verify file persistence on disk (verify SQLite DB file)
+    actual_db_file = tmp_path / "long_term_memory_test.db"
+    assert actual_db_file.exists()
+    
+    import sqlite3
+    conn = sqlite3.connect(str(actual_db_file))
+    cursor = conn.cursor()
+    cursor.execute("SELECT key, value FROM memory")
+    rows = dict(cursor.fetchall())
+    conn.close()
+    assert rows == {"name": "Arjun", "studies": "Computer Science"}
 
     # 6. Update existing fact
     res = tool.execute(action="store_fact", key="name", value="Arjun Dev")
@@ -87,3 +96,74 @@ def test_memory_crud_operations(tmp_path: Path) -> None:
     # 7. Check non-existent key
     res = tool.execute(action="get_fact", key="favorite_color")
     assert "no fact found" in res.lower()
+
+    tool.close()
+
+
+def test_memory_json_migration(tmp_path: Path, monkeypatch) -> None:
+    """Ensure MemoryTool successfully migrates legacy JSON files to SQLite on startup."""
+    # Prevent real API calls for embeddings during migration tests
+    monkeypatch.setattr(MemoryTool, "_get_embedding", lambda self, text: None)
+
+    legacy_json = tmp_path / "legacy_memory.json"
+    db_file = tmp_path / "legacy_memory.db"
+    
+    # 1. Write some legacy JSON data
+    legacy_data = {
+        "hometown": "Chicago",
+        "programming_language": "Python"
+    }
+    with open(legacy_json, "w", encoding="utf-8") as f:
+        json.dump(legacy_data, f)
+        
+    assert legacy_json.exists()
+    assert not db_file.exists()
+    
+    # 2. Initialize MemoryTool pointing to the legacy JSON file
+    tool = MemoryTool(filepath=legacy_json)
+    
+    # 3. Verify migration succeeded and legacy JSON is deleted
+    assert not legacy_json.exists()
+    assert db_file.exists()
+    
+    # 4. Verify retrieved values from the tool
+    assert tool.execute(action="get_fact", key="hometown") == "Chicago"
+    assert tool.execute(action="get_fact", key="programming_language") == "Python"
+    
+    tool.close()
+
+
+def test_memory_semantic_lookup(tmp_path: Path, monkeypatch) -> None:
+    """Ensure MemoryTool performs semantic lookup when exact match is not found."""
+    db_file = tmp_path / "semantic_memory_test.db"
+    
+    # Mock _get_embedding method
+    def mock_get_embedding(self, text: str) -> list[float] | None:
+        vectors = {
+            "programming language": [1.0, 0.0, 0.0],
+            "hometown": [0.0, 1.0, 0.0],
+            "favorite language": [0.99, 0.01, 0.0],
+            "location": [0.05, 0.95, 0.0],
+            "unrelated": [0.0, 0.0, 1.0]
+        }
+        return vectors.get(text.strip().lower(), [0.0, 0.0, 0.0])
+        
+    monkeypatch.setattr(MemoryTool, "_get_embedding", mock_get_embedding)
+    
+    tool = MemoryTool(filepath=db_file)
+    
+    # Store some facts
+    tool.execute(action="store_fact", key="programming language", value="Python")
+    tool.execute(action="store_fact", key="hometown", value="Seattle")
+    
+    # Test semantic lookup
+    val = tool.execute(action="get_fact", key="favorite language")
+    assert val == "Python"
+    
+    val = tool.execute(action="get_fact", key="location")
+    assert val == "Seattle"
+    
+    val = tool.execute(action="get_fact", key="unrelated")
+    assert "no fact found" in val.lower()
+    
+    tool.close()
