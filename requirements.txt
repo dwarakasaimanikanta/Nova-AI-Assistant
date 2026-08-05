@@ -20,3 +20,6 @@ faster-whisper==1.2.1
 
 # GUI Desktop application
 PyQt6==6.11.0
+
+# Google OAuth integration
+google-auth-oauthlib==1.4.0
