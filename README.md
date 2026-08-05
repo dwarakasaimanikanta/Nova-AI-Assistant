@@ -12,21 +12,42 @@ the next layer is added. See [ROADMAP.md](./ROADMAP.md) for the full plan.
 
 ## Current Status
 
-**Phase 1: Project Foundation** ✅
+**Phase 4: AI Brain** ✅
 
-At this stage, Nova is just a clean, professional project skeleton. There
-are no AI, voice, or automation features yet -- only the folder structure,
-configuration system, and logging system that every future phase will be
-built on top of.
+At this stage, Nova is integrated with a generic, swappable LLM abstraction layer backed by the **Google Gemini API**. It features:
+* A generic base provider interface ([llm/base_provider.py](file:///c:/Users/asus/OneDrive/Desktop/nova/llm/base_provider.py)).
+* A concrete Google Gemini client backend wrapper ([llm/gemini_provider.py](file:///c:/Users/asus/OneDrive/Desktop/nova/llm/gemini_provider.py)) executing requests against the `gemini-3.6-flash` model.
+* An extensible provider factory ([llm/provider_factory.py](file:///c:/Users/asus/OneDrive/Desktop/nova/llm/provider_factory.py)) to spawn vendors.
+* A robust conversational coordinator ([llm/conversation.py](file:///c:/Users/asus/OneDrive/Desktop/nova/llm/conversation.py)) that synchronizes chat histories and intercepts API exception events to prevent Nova from crashing.
+* Local fallback logic: if `GEMINI_API_KEY` is not present, Nova defaults back to `EchoSkill` offline mode with an operational setup reminder.
 
-Running the app currently just confirms the skeleton works:
-
+To configure the AI Brain:
+1. Copy `.env.example` to `.env` (if not already done).
+2. Fill in your `GEMINI_API_KEY`.
+3. Run Nova:
+```bash
+python main.py
 ```
+
+Expected output:
+```text
 ===================================
+System Loaded
 Nova AI Assistant
-Status : Online
-Version : 1.0.0
+Version 1.0.0 | Status: Online
+Type 'help' for commands or start typing to chat.
 ===================================
+
+You > help
+Nova: Here are the skills I can perform:
+  • Help: Lists every available skill dynamically.
+  • Time: Shows current date and time.
+  • Calculator: Supports simple arithmetic calculations (+, -, *, /).
+  • SystemInfo: Shows OS, Python version and current working directory.
+  • Echo: Echoes back the user's input.
+
+You > 2 + 2 * 5
+Nova: 2 + 2 * 5 = 12
 ```
 
 ## Project Structure

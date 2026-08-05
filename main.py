@@ -3,32 +3,34 @@ main.py
 --------
 Entry point for the Nova AI Assistant.
 
-At this stage (Phase 1 - Foundation), Nova does not yet have any
-AI, voice, or automation capabilities. This file only verifies that
-the project skeleton runs correctly and prints a status banner.
-
-In later phases, this file will:
-    - Load configuration (core/config.py)
-    - Initialize logging (utils/logger.py)
-    - Start the Core Engine (core/engine.py)
-    - Launch the CLI or GUI interface
+Wires together short-term memory, core engine, and CLI interface,
+then runs the interactive user loop.
 """
 
-from config import APP_NAME, APP_VERSION
+from core.engine import NovaEngine
+from interface.cli import NovaCLI
+from memory.short_term import ShortTermMemory
+from utils.logger import get_logger
 
-
-def print_banner() -> None:
-    """Print Nova's startup status banner to the console."""
-    print("===================================")
-    print(f"{APP_NAME}")
-    print("Status : Online")
-    print(f"Version : {APP_VERSION}")
-    print("===================================")
+logger = get_logger(__name__)
 
 
 def main() -> None:
     """Main entry point of the application."""
-    print_banner()
+    logger.info("Initializing Nova application components...")
+
+    # 1. Instantiate Core Layers
+    memory = ShortTermMemory()
+    engine = NovaEngine(memory=memory)
+
+    # 2. Instantiate and run Interface CLI
+    cli = NovaCLI(engine=engine)
+
+    try:
+        cli.run()
+    except Exception as e:
+        logger.critical("Critical error occurred while running Nova: %s", e, exc_info=True)
+        print(f"Critical System Error: {e}")
 
 
 if __name__ == "__main__":

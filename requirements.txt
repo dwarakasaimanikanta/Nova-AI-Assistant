@@ -10,3 +10,4 @@
 
 python-dotenv==1.0.1   # Loads environment variables from a .env file
 rich==13.7.1            # Nicer console output (used from Phase 1 onward for CLI)
+google-generativeai==0.8.3 # Google Gemini LLM API client SDK
