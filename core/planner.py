@@ -184,7 +184,7 @@ class AgentPlanner:
                     results.append(result)
 
                     # Optimize: If a local deterministic tool already returns a full human-readable response, skip subsequent LLM turn
-                    direct_return_tools = {"calculate_expression", "get_system_time", "get_system_info", "file_manager"}
+                    direct_return_tools = {"calculate_expression", "get_system_time", "get_system_info", "file_manager", "browser"}
                     if tool_name in direct_return_tools:
                         should_direct_return = True
                         direct_response = result
