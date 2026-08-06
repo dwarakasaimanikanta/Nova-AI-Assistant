@@ -252,7 +252,13 @@ class AgentPlanner:
                     })
 
                     # Optimize: If a local deterministic tool already returns a full human-readable response, skip subsequent LLM turn
-                    direct_return_tools = {"calculate_expression", "get_system_time", "get_system_info", "file_manager", "browser", "terminal", "memory", "web_search", "system_control", "scheduler", "code_helper", "voice_tts", "system_monitor"}
+                    direct_return_tools = {
+                        "calculate_expression", "get_system_time", "get_system_info",
+                        "file_manager", "browser", "browser_agent", "terminal", "memory",
+                        "web_search", "system_control", "scheduler", "code_helper",
+                        "voice_tts", "system_monitor", "vision", "desktop_automation",
+                        "gmail", "calendar", "drive", "document"
+                    }
                     if tool_name in direct_return_tools:
                         should_direct_return = True
                         direct_response = result
