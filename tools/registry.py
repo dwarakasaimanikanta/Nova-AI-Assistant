@@ -5,7 +5,7 @@ Catalog repository for registering and retrieving Nova agent tools.
 """
 
 from typing import Any
-import google.generativeai as genai
+from google.genai import types
 
 from tools.base_tool import BaseTool
 from utils.logger import get_logger
@@ -81,20 +81,20 @@ class ToolRegistry:
         """
         return list(self._tools.values())
 
-    def get_gemini_declarations(self) -> list[genai.types.FunctionDeclaration]:
+    def get_gemini_declarations(self) -> list[types.FunctionDeclaration]:
         """
-        Compile all registered tools into google.generativeai.types.FunctionDeclaration.
+        Compile all registered tools into google.genai.types.FunctionDeclaration.
 
         Returns:
-            A list of FunctionDeclarations for the Gemini GenerativeModel setup.
+            A list of FunctionDeclarations for the Gemini Client setup.
         """
         declarations = []
         for tool in self._tools.values():
             gemini_param = convert_schema_to_gemini(tool.parameters_schema)
-            decl = genai.types.FunctionDeclaration(
+            decl = types.FunctionDeclaration(
                 name=tool.name,
                 description=tool.description,
-                parameters=gemini_param if gemini_param else None,
+                parameters_json_schema=gemini_param if gemini_param else None,
             )
             declarations.append(decl)
         return declarations

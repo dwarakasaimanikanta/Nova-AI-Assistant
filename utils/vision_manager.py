@@ -150,16 +150,17 @@ class VisionManager:
             return f"[Mock Vision Response for {image_path.name}]: Visual analysis complete for query '{query}'."
 
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key, transport="rest")
+            from google import genai
+            client = genai.Client(api_key=api_key)
             
             # Load image
             img = Image.open(image_path)
             
-            # Use gemini-2.5-flash or gemini-3.5-flash-lite as the multimodal model
-            model = genai.GenerativeModel("gemini-3.5-flash-lite")
             logger.info("Sending multimodal generation request to Gemini model.")
-            response = model.generate_content([query, img])
+            response = client.models.generate_content(
+                model="gemini-3.5-flash-lite",
+                contents=[query, img]
+            )
             return response.text
         except Exception as e:
             logger.error("Multimodal vision query failed: %s", e)

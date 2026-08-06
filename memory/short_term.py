@@ -5,6 +5,7 @@ Handles short-term session conversation history for Nova.
 """
 
 from dataclasses import dataclass
+from typing import Any
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -18,6 +19,7 @@ class Message:
     content: str | None = None
     function_calls: list[dict] | None = None
     name: str | None = None
+    raw_content: Any = None
 
 
 class ShortTermMemory:
@@ -34,6 +36,7 @@ class ShortTermMemory:
         content: str | None = None,
         function_calls: list[dict] | None = None,
         name: str | None = None,
+        raw_content: Any = None,
     ) -> None:
         """
         Add a message to the history.
@@ -43,8 +46,9 @@ class ShortTermMemory:
             content: The text content of the message.
             function_calls: The requested tool calls.
             name: The tool name if it is a tool response.
+            raw_content: Raw provider response content to preserve metadata.
         """
-        message = Message(role=role, content=content, function_calls=function_calls, name=name)
+        message = Message(role=role, content=content, function_calls=function_calls, name=name, raw_content=raw_content)
         self._history.append(message)
         logger.debug("Added message to short-term memory: %s (has_content: %s, has_calls: %s)", role, content is not None, function_calls is not None)
 

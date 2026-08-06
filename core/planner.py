@@ -75,24 +75,77 @@ class AgentPlanner:
             self.memory.add_message(role="user", content=user_input)
             raw_history = self.memory.get_history()
 
-        # 2. Compile conversational history from memory, skipping past intermediate tool turns
+        # 2. Compile conversational history from memory
+        from google.genai import types
         history_payload = []
-        for msg in raw_history:
-            # Skip past intermediate tool execution turns to prevent API schema validation errors
-            if msg.role == "tool":
-                continue
-            if msg.role == "assistant" and msg.function_calls is not None and not msg.content:
-                continue
+        i = 0
+        while i < len(raw_history):
+            msg = raw_history[i]
+            if msg.role == "user":
+                history_payload.append({
+                    "role": "user",
+                    "parts": [msg.content]
+                })
+                i += 1
+            elif msg.role == "assistant":
+                if msg.raw_content is not None:
+                    history_payload.append(msg.raw_content)
+                else:
+                    if msg.function_calls:
+                        parts = []
+                        for fc in msg.function_calls:
+                            parts.append(
+                                types.Part.from_function_call(
+                                    name=fc["name"],
+                                    args=fc["args"]
+                                )
+                            )
+                        history_payload.append({
+                            "role": "model",
+                            "parts": parts
+                        })
+                    else:
+                        history_payload.append({
+                            "role": "model",
+                            "parts": [msg.content or ""]
+                        })
+                i += 1
+            elif msg.role == "tool":
+                tool_parts = []
+                while i < len(raw_history) and raw_history[i].role == "tool":
+                    t_msg = raw_history[i]
+                    part = types.Part.from_function_response(
+                        name=t_msg.name or "",
+                        response={"result": t_msg.content}
+                    )
+                    tool_parts.append(part)
+                    i += 1
+                history_payload.append({
+                    "role": "user",
+                    "parts": tool_parts
+                })
 
-            history_payload.append({
-                "role": msg.role,
-                "content": msg.content,
-                "function_calls": msg.function_calls,
-                "name": msg.name,
-            })
-
-        # Limit history payload context window to last 10 turns
+        # Limit history payload context window to last 10 turns safely, avoiding orphan function_responses
         history_payload = history_payload[-10:]
+        while history_payload:
+            first_msg = history_payload[0]
+            has_response = False
+            if isinstance(first_msg, dict):
+                parts = first_msg.get("parts", [])
+                for p in parts:
+                    if hasattr(p, "function_response") or (isinstance(p, dict) and "function_response" in p):
+                        has_response = True
+                        break
+            elif hasattr(first_msg, "parts"):
+                for p in first_msg.parts:
+                    if hasattr(p, "function_response"):
+                        has_response = True
+                        break
+            
+            if has_response:
+                history_payload = history_payload[1:]
+            else:
+                break
 
         # 3. Get active tool declarations
         declarations = self.registry.get_gemini_declarations()
@@ -124,7 +177,7 @@ class AgentPlanner:
 
             if response.function_calls:
                 # Log model's execution intent in payload and short-term memory
-                self.memory.add_message(role="assistant", function_calls=response.function_calls)
+                self.memory.add_message(role="assistant", function_calls=response.function_calls, raw_content=response.raw_content)
                 if response.raw_content:
                     history_payload.append(response.raw_content)
                 else:
@@ -213,7 +266,7 @@ class AgentPlanner:
             else:
                 # No more function calls requested! The model produced a final conversational answer.
                 final_text = response.text or "I completed the tasks but have no message to report."
-                self.memory.add_message(role="assistant", content=final_text)
+                self.memory.add_message(role="assistant", content=final_text, raw_content=response.raw_content)
 
                 total_time = time.perf_counter() - start_planning
                 logger.info(

@@ -7,19 +7,20 @@ Unit tests for Nova's LLM Abstraction Layer.
 from unittest.mock import MagicMock, patch
 import pytest
 
+from google.genai import types
 from llm.gemini_provider import GeminiProvider
 from llm.provider_factory import LLMProviderFactory
 from llm.conversation import LLMConversation
 from memory.short_term import ShortTermMemory
+from llm.base_provider import LLMResponse
 
 
 def test_provider_factory() -> None:
     """Ensure provider factory returns correct instance or raises ValueError."""
-    # Instantiating Gemini requires a key, mock configure to bypass validation
-    with patch("google.generativeai.configure") as mock_conf:
+    with patch("google.genai.Client") as mock_client:
         provider = LLMProviderFactory.get_provider("gemini", "mock-api-key")
         assert isinstance(provider, GeminiProvider)
-        mock_conf.assert_called_once_with(api_key="mock-api-key", transport="rest")
+        mock_client.assert_called_once_with(api_key="mock-api-key")
 
     with pytest.raises(ValueError):
         LLMProviderFactory.get_provider("invalid-provider", "key")
@@ -27,21 +28,20 @@ def test_provider_factory() -> None:
 
 def test_gemini_message_conversion() -> None:
     """Ensure GeminiProvider translates roles to Google Gemini's schema (user/model)."""
-    with patch("google.generativeai.configure"), patch("google.generativeai.GenerativeModel"):
+    with patch("google.genai.Client"):
         provider = GeminiProvider(api_key="mock")
 
-        # Conversions check
         generic_messages = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there!"},
+            {"role": "user", "parts": ["Hello"]},
+            {"role": "assistant", "parts": ["Hi there!"]},
         ]
         translated = provider._convert_messages(generic_messages)
 
         assert len(translated) == 2
-        assert translated[0]["role"] == "user"
-        assert translated[0]["parts"] == ["Hello"]
-        assert translated[1]["role"] == "model"
-        assert translated[1]["parts"] == ["Hi there!"]
+        assert translated[0].role == "user"
+        assert translated[0].parts[0].text == "Hello"
+        assert translated[1].role == "model"
+        assert translated[1].parts[0].text == "Hi there!"
 
 
 def test_conversation_manager() -> None:
@@ -50,17 +50,20 @@ def test_conversation_manager() -> None:
     memory.add_message(role="user", content="Hi")
 
     mock_provider = MagicMock()
-    mock_provider.generate.return_value = "Hello! How can I help?"
+    mock_provider.generate.return_value = LLMResponse(text="Hello! How can I help?")
 
     convo = LLMConversation(provider=mock_provider, memory=memory)
     response = convo.ask("Hello Nova")
 
     assert response == "Hello! How can I help?"
-    # Verify that the provider was called with the correct history payload
-    mock_provider.generate.assert_called_once_with([
-        {"role": "user", "content": "Hi"},
-        {"role": "user", "content": "Hello Nova"},
-    ], stream=False)
+    
+    # Verify that the provider was called with the correct history payload (structured parts)
+    called_payload = mock_provider.generate.call_args[0][0]
+    assert len(called_payload) == 2
+    assert called_payload[0]["role"] == "user"
+    assert called_payload[0]["parts"] == ["Hi"]
+    assert called_payload[1]["role"] == "user"
+    assert called_payload[1]["parts"] == ["Hello Nova"]
 
 
 def test_conversation_error_isolation() -> None:
@@ -86,26 +89,22 @@ def test_conversation_history_slicing() -> None:
         memory.add_message(role="assistant", content=f"Bot {i}")
 
     mock_provider = MagicMock()
-    mock_provider.generate.return_value = "Response"
+    mock_provider.generate.return_value = LLMResponse(text="Response")
 
     convo = LLMConversation(provider=mock_provider, memory=memory)
     convo.ask("Active Input")
 
+    called_payload = mock_provider.generate.call_args[0][0]
     # Expect last 10 messages: Bot 1, User 2, Bot 2, User 3, Bot 3, User 4, Bot 4, User 5, Bot 5, and the Active Input
-    expected_payload = [
-        {"role": "assistant", "content": "Bot 1"},
-        {"role": "user", "content": "User 2"},
-        {"role": "assistant", "content": "Bot 2"},
-        {"role": "user", "content": "User 3"},
-        {"role": "assistant", "content": "Bot 3"},
-        {"role": "user", "content": "User 4"},
-        {"role": "assistant", "content": "Bot 4"},
-        {"role": "user", "content": "User 5"},
-        {"role": "assistant", "content": "Bot 5"},
-        {"role": "user", "content": "Active Input"},
-    ]
-
-    mock_provider.generate.assert_called_once_with(expected_payload, stream=False)
+    assert len(called_payload) == 10
+    
+    # Alternating roles
+    assert called_payload[0]["role"] == "model"
+    assert called_payload[0]["parts"] == ["Bot 1"]
+    assert called_payload[1]["role"] == "user"
+    assert called_payload[1]["parts"] == ["User 2"]
+    assert called_payload[-1]["role"] == "user"
+    assert called_payload[-1]["parts"] == ["Active Input"]
 
 
 def test_conversation_manager_streaming() -> None:
@@ -125,6 +124,8 @@ def test_conversation_manager_streaming() -> None:
 
     # Verify that the full response was recorded in memory
     history = memory.get_history()
-    assert len(history) == 1
-    assert history[0].role == "assistant"
-    assert history[0].content == "Hello world!"
+    # First turn is user "Hello Nova", second is assistant "Hello world!"
+    assert len(history) == 2
+    assert history[0].role == "user"
+    assert history[1].role == "assistant"
+    assert history[1].content == "Hello world!"

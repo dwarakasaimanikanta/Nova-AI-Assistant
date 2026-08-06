@@ -1,13 +1,14 @@
 """
 llm/gemini_provider.py
 ----------------------
-Google Gemini LLM provider implementation for Nova supporting function calling.
+Google Gemini LLM provider implementation for Nova supporting function calling,
+fully migrated to the official google-genai SDK.
 """
 
 from collections.abc import Generator
 from typing import Any
-import google.generativeai as genai
-import google.generativeai.types.content_types as ct
+from google import genai
+from google.genai import types
 
 from llm.base_provider import BaseLLMProvider, LLMResponse
 from utils.logger import get_logger
@@ -16,7 +17,7 @@ logger = get_logger(__name__)
 
 
 class GeminiProvider(BaseLLMProvider):
-    """LLM provider implementation for Google Gemini API."""
+    """LLM provider implementation for Google Gemini API using google-genai SDK."""
 
     def __init__(self, api_key: str, model_name: str = "gemini-3.5-flash-lite") -> None:
         """
@@ -31,74 +32,97 @@ class GeminiProvider(BaseLLMProvider):
             raise ValueError("Gemini API Key is required to instantiate GeminiProvider.")
 
         self.model_name = model_name
-        genai.configure(api_key=api_key, transport="rest")
-        self.model = genai.GenerativeModel(model_name)
-        logger.info("GeminiProvider configured successfully with model: %s (transport: rest)", model_name)
+        self.client = genai.Client(api_key=api_key)
+        logger.info("GeminiProvider configured successfully with model: %s (genai Client)", model_name)
 
-    def _convert_messages(self, messages: list[dict[str, Any]]) -> list[Any]:
+    def _convert_messages(self, messages: list[Any]) -> list[types.Content]:
         """
-        Convert generic messages to Google Gemini expected schema structure.
+        Convert generic messages to Google Gemini expected types.Content structure.
 
         Args:
-            messages: List of generic role/content dicts.
+            messages: List of generic role/content dicts or types.Content.
 
         Returns:
-            A list of formatted contents dicts matching Gemini SDK schema.
+            A list of formatted types.Content objects.
         """
         formatted_contents = []
         for msg in messages:
-            # If the item is already a Content object or structured dict (has 'parts' and 'role'), pass it directly
-            if hasattr(msg, "parts") and hasattr(msg, "role"):
-                formatted_contents.append(msg)
-                continue
-            if isinstance(msg, dict) and "parts" in msg and "role" in msg:
+            # If the item is already a types.Content object, pass it directly
+            if isinstance(msg, types.Content):
                 formatted_contents.append(msg)
                 continue
 
+            # If it is a dictionary representing Content with role and parts
+            if isinstance(msg, dict) and "parts" in msg and "role" in msg:
+                role = msg["role"]
+                api_role = "model" if role == "assistant" else role
+                parts = []
+                for p in msg["parts"]:
+                    if isinstance(p, types.Part):
+                        parts.append(p)
+                    elif isinstance(p, dict):
+                        if "text" in p:
+                            parts.append(types.Part.from_text(text=p["text"]))
+                        elif "function_call" in p:
+                            fc = p["function_call"]
+                            parts.append(types.Part.from_function_call(
+                                name=fc["name"],
+                                args=fc["args"]
+                            ))
+                        elif "function_response" in p:
+                            fr = p["function_response"]
+                            parts.append(types.Part.from_function_response(
+                                name=fr["name"],
+                                response=fr["response"]
+                            ))
+                        else:
+                            parts.append(types.Part(**p))
+                    else:
+                        parts.append(types.Part.from_text(text=str(p)))
+
+                formatted_contents.append(types.Content(
+                    role=api_role,
+                    parts=parts
+                ))
+                continue
+
+            # Standard fallback message dict mapping
             role = msg.get("role", "user")
             content = msg.get("content")
             function_calls = msg.get("function_calls")
 
-            # Map assistant role to model role for Gemini API compatibility
             api_role = "model" if role == "assistant" else role
+            if role == "tool":
+                api_role = "user"
 
             parts = []
             if function_calls:
                 api_role = "model"
                 for fc in function_calls:
-                    parts.append(
-                        ct.to_part({
-                            "function_call": {
-                                "name": fc["name"],
-                                "args": fc["args"],
-                            }
-                        })
-                    )
+                    parts.append(types.Part.from_function_call(
+                        name=fc["name"],
+                        args=fc["args"]
+                    ))
             elif role == "tool":
-                # Function response results must be mapped as role "user"
-                api_role = "user"
-                parts.append(
-                    ct.to_part({
-                        "function_response": {
-                            "name": msg.get("name", ""),
-                            "response": {"result": content},
-                        }
-                    })
-                )
+                parts.append(types.Part.from_function_response(
+                    name=msg.get("name", ""),
+                    response={"result": content}
+                ))
             else:
                 if content is not None:
-                    parts.append(content)
+                    parts.append(types.Part.from_text(text=str(content)))
 
             if parts:
-                formatted_contents.append({
-                    "role": api_role,
-                    "parts": parts,
-                })
+                formatted_contents.append(types.Content(
+                    role=api_role,
+                    parts=parts
+                ))
+
         return formatted_contents
 
     def generate(
         self,
-        messages: list[dict[str, Any]],
+        messages: list[Any],
         stream: bool = False,
         tools: list[Any] | None = None,
     ) -> LLMResponse | Generator[str, None, None]:
@@ -116,38 +140,66 @@ class GeminiProvider(BaseLLMProvider):
         contents = self._convert_messages(messages)
         logger.debug("Sending generation request to Gemini model.")
 
-        # Bind tools to a temporary model instance if provided to prevent caching issues
+        # Construct GenerateContentConfig config arguments
+        config_args = {"temperature": 0.7}
         if tools:
-            model = genai.GenerativeModel(self.model_name, tools=tools)
-        else:
-            model = self.model
+            wrapped_tools = []
+            if isinstance(tools, list):
+                func_decls = []
+                for t in tools:
+                    if isinstance(t, types.Tool):
+                        wrapped_tools.append(t)
+                    elif isinstance(t, types.FunctionDeclaration):
+                        func_decls.append(t)
+                    elif hasattr(t, "name") and (hasattr(t, "parameters_json_schema") or hasattr(t, "parameters")):
+                        func_decls.append(t)
+                    else:
+                        wrapped_tools.append(t)
+                if func_decls:
+                    wrapped_tools.append(types.Tool(function_declarations=func_decls))
+            else:
+                if isinstance(tools, types.Tool):
+                    wrapped_tools.append(tools)
+                elif isinstance(tools, types.FunctionDeclaration):
+                    wrapped_tools.append(types.Tool(function_declarations=[tools]))
+                else:
+                    wrapped_tools.append(tools)
+
+            config_args["tools"] = wrapped_tools
+            # Disable automatic function calling so we can execute manually via planner
+            config_args["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(disable=True)
+
+        config = types.GenerateContentConfig(**config_args)
 
         if stream:
-            response = model.generate_content(contents, stream=True, request_options={"timeout": 60.0})
-            return (chunk.text for chunk in response)
+            # Note: Streaming with tools is typically not supported or needed, but we provide it for text response.
+            response_stream = self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=contents,
+                config=config
+            )
+            return (chunk.text for chunk in response_stream if chunk.text)
         else:
-            response = model.generate_content(contents, request_options={"timeout": 60.0})
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=config
+            )
 
             # Check for function calls
             function_calls = []
             raw_content = None
-            if response.candidates and response.candidates[0].content.parts:
+            if response.candidates and response.candidates[0].content:
                 raw_content = response.candidates[0].content
-                for part in response.candidates[0].content.parts:
-                    if part.function_call:
-                        # Ensure every parsed function call gets a completely fresh args dictionary
-                        parsed_args = {k: v for k, v in part.function_call.args.items()}
+                if response.function_calls:
+                    for call in response.function_calls:
+                        parsed_args = {k: v for k, v in call.args.items()} if call.args else {}
                         function_calls.append({
-                            "name": part.function_call.name,
+                            "name": call.name,
                             "args": parsed_args,
                         })
 
-            # Safely extract text (raises ValueError if there are only function calls)
-            text = None
-            if not function_calls:
-                try:
-                    text = response.text
-                except ValueError:
-                    pass
+            # Extract text safely
+            text = response.text
 
             return LLMResponse(text=text, function_calls=function_calls, raw_content=raw_content)

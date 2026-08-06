@@ -44,24 +44,64 @@ class LLMConversation:
         # 1. Fetch history from short-term memory
         raw_history = self.memory.get_history()
 
-        # 2. Format history into provider-expected schema list-of-dicts
-        history_payload = []
-        for msg in raw_history:
-            history_payload.append({
-                "role": msg.role,
-                "content": msg.content,
-            })
-
-        # 3. Double-check that user_input is representing the latest turn
+        # 2. Double-check that user_input is representing the latest turn
         if (
-            not history_payload
-            or history_payload[-1]["role"] != "user"
-            or history_payload[-1]["content"] != user_input
+            not raw_history
+            or raw_history[-1].role != "user"
+            or raw_history[-1].content != user_input
         ):
-            history_payload.append({
-                "role": "user",
-                "content": user_input,
-            })
+            self.memory.add_message(role="user", content=user_input)
+            raw_history = self.memory.get_history()
+
+        # 3. Format history and preserve thought_signatures using new SDK structures
+        from google.genai import types
+        history_payload = []
+        i = 0
+        while i < len(raw_history):
+            msg = raw_history[i]
+            if msg.role == "user":
+                history_payload.append({
+                    "role": "user",
+                    "parts": [msg.content]
+                })
+                i += 1
+            elif msg.role == "assistant":
+                if msg.raw_content is not None:
+                    history_payload.append(msg.raw_content)
+                else:
+                    if msg.function_calls:
+                        parts = []
+                        for fc in msg.function_calls:
+                            parts.append(
+                                types.Part.from_function_call(
+                                    name=fc["name"],
+                                    args=fc["args"]
+                                )
+                            )
+                        history_payload.append({
+                            "role": "model",
+                            "parts": parts
+                        })
+                    else:
+                        history_payload.append({
+                            "role": "model",
+                            "parts": [msg.content or ""]
+                        })
+                i += 1
+            elif msg.role == "tool":
+                tool_parts = []
+                while i < len(raw_history) and raw_history[i].role == "tool":
+                    t_msg = raw_history[i]
+                    part = types.Part.from_function_response(
+                        name=t_msg.name or "",
+                        response={"result": t_msg.content}
+                    )
+                    tool_parts.append(part)
+                    i += 1
+                history_payload.append({
+                    "role": "user",
+                    "parts": tool_parts
+                })
 
         # 4. Limit conversation history sent to Gemini to only the last 10 messages (including current user prompt)
         history_payload = history_payload[-10:]
@@ -108,7 +148,10 @@ class LLMConversation:
                     "API response received. Total response time: %.4f seconds. End time: %f",
                     total_time, time.perf_counter()
                 )
-                return str(response)
+                text = response.text if hasattr(response, "text") else str(response)
+                self.memory.add_message(role="assistant", content=text, raw_content=getattr(response, "raw_content", None))
+                return text
+
 
         except Exception as e:
             logger.exception("LLM Provider encountered an error during generate: %s", e)

@@ -33,5 +33,5 @@ def test_registry_gemini_declarations() -> None:
 
     calc_decl = next(d for d in declarations if d.name == "calculate_expression")
     assert calc_decl.description is not None
-    # Verify parameter property names exist
-    assert "expression" in calc_decl.parameters.properties
+    # Verify parameter property names exist in parameters_json_schema
+    assert "expression" in calc_decl.parameters_json_schema["properties"]

@@ -85,12 +85,25 @@ class RoutingLLMProvider(BaseLLMProvider):
 
         # 2. Automatic Routing Logic
         online = self._is_online()
+        gemini_error = None
+
         if self.gemini_provider and online:
             try:
                 logger.info("Routing: Online Gemini provider is available. Routing query.")
                 return self.gemini_provider.generate(messages, stream, tools)
+            except (ConnectionError, TimeoutError, OSError) as e:
+                # Genuine network / connectivity failure → safe to fall back to Ollama
+                logger.warning("Routing: Gemini network error: %s. Falling back to local Ollama.", e)
+                gemini_error = e
             except Exception as e:
-                logger.warning("Routing: Gemini generation request failed: %s. Falling back to local Ollama.", e)
+                # API error (400, 401, 429, SDK bug, etc.) → do NOT silently swallow
+                logger.error("Routing: Gemini API error: %s", e)
+                gemini_error = e
+
+                # For non-network errors, only fall back to Ollama if it is actually healthy.
+                # Otherwise re-raise immediately so the user sees the real cause.
+                if not self.local_manager.is_healthy():
+                    raise
 
         # 3. Fallback Route to local Ollama if healthy
         if self.local_manager.is_healthy():
@@ -114,5 +127,14 @@ class RoutingLLMProvider(BaseLLMProvider):
                     
             return self.ollama_provider.generate(messages, stream, tools)
 
-        # No pathways available
-        raise RuntimeError("LLM routing failure: internet is offline and local Ollama is unreachable.")
+        # No pathways available — report the real cause
+        if gemini_error:
+            raise RuntimeError(
+                f"Gemini API request failed and no local Ollama fallback is available. "
+                f"Original error: {gemini_error}"
+            ) from gemini_error
+
+        raise RuntimeError(
+            "LLM routing failure: no Gemini API key configured and local Ollama is not running."
+        )
+

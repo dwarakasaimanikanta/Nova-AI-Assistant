@@ -54,11 +54,42 @@ class OllamaProvider(BaseLLMProvider):
         # Format messages for Ollama API
         formatted_messages = []
         for msg in messages:
-            # Map roles safely
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
+            role = "user"
+            if hasattr(msg, "role"):
+                role = msg.role
+            elif isinstance(msg, dict):
+                role = msg.get("role", "user")
             
-            # Map assistant role to model role if necessary, though Ollama accepts assistant
+            # Map model role back to assistant for Ollama
+            if role == "model":
+                role = "assistant"
+
+            content = ""
+            parts = []
+            if hasattr(msg, "parts"):
+                parts = msg.parts
+            elif isinstance(msg, dict) and "parts" in msg:
+                parts = msg["parts"]
+            elif isinstance(msg, dict):
+                content = msg.get("content", "")
+
+            if parts:
+                text_parts = []
+                for part in parts:
+                    if hasattr(part, "text") and part.text:
+                        text_parts.append(part.text)
+                    elif isinstance(part, dict) and "text" in part:
+                        text_parts.append(part["text"])
+                    elif hasattr(part, "function_call") and part.function_call:
+                        text_parts.append(f"[Calls Tool: {part.function_call.name}]")
+                    elif isinstance(part, dict) and "function_call" in part:
+                        text_parts.append(f"[Calls Tool: {part['function_call'].get('name', '')}]")
+                    elif hasattr(part, "function_response") and part.function_response:
+                        text_parts.append(f"[Tool Response: {part.function_response.response}]")
+                    elif isinstance(part, dict) and "function_response" in part:
+                        text_parts.append(f"[Tool Response: {part['function_response'].get('response', '')}]")
+                content = " ".join(text_parts)
+
             formatted_messages.append({
                 "role": role,
                 "content": str(content)

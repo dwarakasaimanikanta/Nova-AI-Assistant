@@ -70,18 +70,16 @@ def test_query_multimodal_vision(mock_vision_manager, dummy_image_file) -> None:
     # Ensure api_key check is bypassed
     import os
     with patch.dict(os.environ, {"GEMINI_API_KEY": "fake_api_key"}), \
-         patch("google.generativeai.configure") as mock_configure, \
-         patch("google.generativeai.GenerativeModel") as mock_model_class:
+         patch("google.genai.Client") as mock_client_class:
          
-        mock_model = MagicMock()
-        mock_model.generate_content.return_value = MagicMock(text="Multimodal Description Text")
-        mock_model_class.return_value = mock_model
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = MagicMock(text="Multimodal Description Text")
+        mock_client_class.return_value = mock_client
         
         res = mock_vision_manager.query_multimodal_vision(dummy_image_file, "Describe colors")
         
         assert "Multimodal Description Text" in res
-        mock_configure.assert_called_once_with(api_key="fake_api_key", transport="rest")
-        mock_model_class.assert_called_with("gemini-3.5-flash-lite")
+        mock_client_class.assert_called_once_with(api_key="fake_api_key")
 
 
 def test_vision_tool_execute_actions(mock_vision_manager, dummy_image_file) -> None:

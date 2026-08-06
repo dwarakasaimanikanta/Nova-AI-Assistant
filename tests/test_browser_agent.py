@@ -5,7 +5,7 @@ Unit tests for BrowserManager, BrowserTool, and browser PermissionGate checks.
 Fully mocked to ensure headless execution without requiring actual Playwright browser binaries.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tools.browser_tool import BrowserTool
@@ -15,77 +15,93 @@ from tools.base_tool import RiskLevel
 
 
 @pytest.fixture
-def mock_playwright_context():
-    """Generates complete mock structure of Playwright page, contexts, and browsers."""
-    with patch("playwright.sync_api.sync_playwright") as mock_sync:
+def mock_async_playwright():
+    """Generates complete mock structure of async Playwright page, contexts, and browsers."""
+    with patch("playwright.async_api.async_playwright") as mock_async:
         mock_p = MagicMock()
-        mock_browser = MagicMock()
-        mock_context = MagicMock()
-        mock_page = MagicMock()
-        
-        # Link context tree
-        mock_sync.return_value.start.return_value = mock_p
-        mock_p.chromium.launch.return_value = mock_browser
-        mock_browser.new_context.return_value = mock_context
-        mock_context.new_page.return_value = mock_page
-        
+        mock_p.stop = AsyncMock()  # stop() is awaited in close_browser
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+
+        # async_playwright() returns an async context; .start() is awaited
+        mock_cm = AsyncMock()
+        mock_cm.start = AsyncMock(return_value=mock_p)
+        mock_async.return_value = mock_cm
+
+        # Link context tree (all return values must be awaitable)
+        mock_p.chromium.launch = AsyncMock(return_value=mock_browser)
+        mock_browser.new_context = AsyncMock(return_value=mock_context)
+        mock_context.set_default_timeout = MagicMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+
+        # Mock locator chain for search_google
+        mock_locator = MagicMock()
+        mock_locator.first = MagicMock()
+        mock_locator.first.is_visible = AsyncMock(return_value=True)
+        mock_locator.first.click = AsyncMock()
+        mock_locator.first.fill = AsyncMock()
+        mock_locator.first.press = AsyncMock()
+        mock_page.locator = MagicMock(return_value=mock_locator)
+        mock_page.wait_for_selector = AsyncMock()
+        mock_page.wait_for_timeout = AsyncMock()
+
         yield mock_p, mock_browser, mock_context, mock_page
 
 
-def test_browser_manager_actions(mock_playwright_context) -> None:
+def test_browser_manager_actions(mock_async_playwright) -> None:
     """BrowserManager: verify navigations, searches, clicks, typing, and closes call Playwright."""
-    _, _, _, mock_page = mock_playwright_context
-    
+    _, _, _, mock_page = mock_async_playwright
+
     manager = BrowserManager()
     res_launch = manager.launch_browser("chromium", headless=True)
     assert "Success" in res_launch
-    assert manager.mock_mode is False
 
     # 1. Open URL
     manager.open_url("http://test.com")
-    mock_page.goto.assert_called_with("http://test.com", wait_until="load")
+    mock_page.goto.assert_awaited_with("http://test.com", wait_until="load")
 
-    # 2. Search Google
+    # 2. Search Google (uses page.locator() -> .fill() / .press() internally)
     manager.search_google("RAG agent")
-    mock_page.fill.assert_any_call("input[name='q']", "RAG agent")
-    mock_page.press.assert_any_call("input[name='q']", "Enter")
+    # Verify Google was navigated to
+    mock_page.goto.assert_any_await("https://www.google.com", wait_until="load")
+    # Verify locator was used to find the search input
+    mock_page.locator.assert_called()
 
     # 3. Click Element
     manager.click_element("button#submit")
-    mock_page.click.assert_called_with("button#submit")
+    mock_page.click.assert_awaited_with("button#submit")
 
     # 4. Type Text
     manager.type_text("input#name", "Nova Assistant")
-    mock_page.fill.assert_called_with("input#name", "Nova Assistant")
+    mock_page.fill.assert_awaited_with("input#name", "Nova Assistant")
 
     # 5. Extract Text
-    mock_page.inner_text.return_value = "Page body text content"
+    mock_page.inner_text = AsyncMock(return_value="Page body text content")
     txt = manager.extract_text()
     assert txt == "Page body text content"
-    mock_page.inner_text.assert_called_with("body")
+    mock_page.inner_text.assert_awaited_with("body")
 
     # 6. Close Browser
     res_close = manager.close_browser()
     assert "Success" in res_close
-    mock_page.close.assert_called_once()
+    mock_page.close.assert_awaited_once()
 
 
 def test_browser_manager_resiliency_fallback() -> None:
-    """BrowserManager: verify launch failures fallback to Mock Browser Mode gracefully."""
-    # Force exception during playwright import or start
-    with patch("playwright.sync_api.sync_playwright", side_effect=ImportError("No driver found")):
+    """BrowserManager: verify launch failures return Failure message gracefully."""
+    with patch("playwright.async_api.async_playwright", side_effect=ImportError("No driver found")):
         manager = BrowserManager()
         res = manager.launch_browser()
-        
-        assert "Success" in res
-        assert manager.mock_mode is True
-        
-        # Test subsequent operations do not crash and report Mock Mode Success
+
+        assert "Failure" in res
+
+        # Subsequent operations return informative failure since browser is not launched
         res_open = manager.open_url("http://verify.org")
-        assert "Mock Mode" in res_open
-        
+        assert "Failure" in res_open
+
         res_search = manager.search_google("testing")
-        assert "Mock Mode" in res_search
+        assert "Failure" in res_search
 
 
 def test_browser_tool_routing() -> None:
