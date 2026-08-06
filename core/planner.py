@@ -47,6 +47,53 @@ class AgentPlanner:
         self.permission_gate = permission_gate
         self.max_iterations = max_iterations
 
+    @staticmethod
+    def _safe_slice_history(history: list, max_turns: int = 10) -> list:
+        """Slice history to last *max_turns* entries, then drop leading orphans.
+
+        Gemini requires that:
+        - A model(function_call) turn is preceded by a user or function_response turn.
+        - A user(function_response) turn is preceded by a model(function_call) turn.
+        - Conversation always starts with a user(text) turn.
+
+        After slicing, we drop leading turns until the first entry is a plain
+        user(text) turn, which is always a safe starting point.
+        """
+        history = history[-max_turns:]
+        while history:
+            first_msg = history[0]
+            should_drop = False
+
+            # Determine the role of the first message
+            role = None
+            if isinstance(first_msg, dict):
+                role = first_msg.get("role")
+            elif hasattr(first_msg, "role"):
+                role = first_msg.role
+
+            # Drop any model/assistant turn at the start (must start with user)
+            if role in ("model", "assistant"):
+                should_drop = True
+
+            # Drop user turns that carry function_response parts (orphaned response)
+            if not should_drop and role == "user":
+                parts = []
+                if isinstance(first_msg, dict):
+                    parts = first_msg.get("parts", [])
+                elif hasattr(first_msg, "parts"):
+                    parts = first_msg.parts or []
+                for p in parts:
+                    if hasattr(p, "function_response") or (isinstance(p, dict) and "function_response" in p):
+                        should_drop = True
+                        break
+
+            if should_drop:
+                history = history[1:]
+            else:
+                break
+
+        return history
+
     def ask(self, user_input: str, stream: bool = False) -> str | Generator[str, None, None]:
         """
         Query the LLM provider with tool execution loop and return the final response.
@@ -125,27 +172,8 @@ class AgentPlanner:
                     "parts": tool_parts
                 })
 
-        # Limit history payload context window to last 10 turns safely, avoiding orphan function_responses
-        history_payload = history_payload[-10:]
-        while history_payload:
-            first_msg = history_payload[0]
-            has_response = False
-            if isinstance(first_msg, dict):
-                parts = first_msg.get("parts", [])
-                for p in parts:
-                    if hasattr(p, "function_response") or (isinstance(p, dict) and "function_response" in p):
-                        has_response = True
-                        break
-            elif hasattr(first_msg, "parts"):
-                for p in first_msg.parts:
-                    if hasattr(p, "function_response"):
-                        has_response = True
-                        break
-            
-            if has_response:
-                history_payload = history_payload[1:]
-            else:
-                break
+        # Limit history payload context window to last 10 turns safely
+        history_payload = self._safe_slice_history(history_payload)
 
         # 3. Get active tool declarations
         declarations = self.registry.get_gemini_declarations()
@@ -259,8 +287,8 @@ class AgentPlanner:
                         return direct_gen()
                     return direct_response
 
-                # Slice payload window to last 10 elements
-                history_payload = history_payload[-10:]
+                # Slice payload window to last 10 elements (with orphan protection)
+                history_payload = self._safe_slice_history(history_payload)
                 continue
 
             else:
