@@ -154,6 +154,7 @@ class VoiceManager:
         self._stop_event = threading.Event()
         self.tts.stop_event = self._stop_event
         self.is_active = False
+        self.state = "WAKING" if self.wake_word_enabled else "LISTENING"
 
     def start(self) -> None:
         """Start the background voice listener thread."""
@@ -195,6 +196,7 @@ class VoiceManager:
         """Log every state transition and return the new state."""
         logger.info("[Watchdog] %s -> %s", current_state, new_state)
         _safe_print(f"[VoiceManager] State: {current_state} -> {new_state}")
+        self.state = new_state
         return new_state
 
     def _safe_speak(self, text: str, fallback: str = "") -> None:
@@ -263,6 +265,9 @@ class VoiceManager:
         _safe_print(f"[VoiceManager] Initial state: {state}")
 
         while not self._stop_event.is_set():
+            # Synchronize state from self.state in case it was changed externally
+            if self.state != state:
+                state = self.state
             # ── LAST-RESORT guard: catches BaseException (KeyboardInterrupt, SystemExit, etc.)
             # so even catastrophic errors don't kill the daemon thread silently.
             try:

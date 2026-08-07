@@ -121,3 +121,9 @@ TESSERACT_CMD: str | None = os.getenv("TESSERACT_CMD", None)
 OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434").strip()
 FORCE_LLM_PROVIDER: str | None = os.getenv("FORCE_LLM_PROVIDER", None)
 FORCE_LLM_MODEL: str | None = os.getenv("FORCE_LLM_MODEL", None)
+
+# Startup Configuration
+AUTO_START: bool = os.getenv("AUTO_START", "false").strip().lower() == "true"
+START_MINIMIZED: bool = os.getenv("START_MINIMIZED", "false").strip().lower() == "true"
+SYSTEM_TRAY: bool = os.getenv("SYSTEM_TRAY", "false").strip().lower() == "true"
+STARTUP_GREETING_ENABLED: bool = os.getenv("STARTUP_GREETING_ENABLED", "true").strip().lower() == "true"

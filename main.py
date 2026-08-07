@@ -22,13 +22,41 @@ def main() -> None:
     
     parser = argparse.ArgumentParser(description="Nova AI Assistant")
     parser.add_argument("--gui", action="store_true", help="Launch the Desktop PyQt6 Conversational GUI")
+    parser.add_argument("--minimized", action="store_true", help="Start the application minimized to system tray")
     args = parser.parse_args()
 
     logger.info("Initializing Nova application components...")
 
-    # 1. Instantiate Core Layers
-    memory = ShortTermMemory()
-    engine = NovaEngine(memory=memory)
+    # 1. Instantiate Core Layers and run Startup Lifecycle
+    from core.startup_manager import StartupManager
+    startup_mgr = StartupManager()
+    try:
+        startup_mgr.initialize_startup()
+    except Exception as startup_err:
+        startup_mgr.handle_startup_failure(startup_err, "StartupManager")
+
+    startup_report, engine = startup_mgr.run_lifecycle(args)
+    if engine is None:
+        logger.critical("Critical: NovaEngine failed to initialize during startup lifecycle.")
+        sys.exit(1)
+
+    # Instantiate and start the SessionManager automatic sequence
+    try:
+        from core.morning_engine import MorningEngine
+        from core.session_manager import SessionManager
+        
+        morning_eng = MorningEngine()
+        voice_plugin = next((p for p in engine.plugins if p.name == "voice"), None)
+        voice_mgr = voice_plugin.voice_manager if voice_plugin else None
+
+        session_mgr = SessionManager(
+            startup_manager=startup_mgr,
+            morning_engine=morning_eng,
+            voice_manager=voice_mgr
+        )
+        session_mgr.start_session("BOOT_SESSION")
+    except Exception as session_err:
+        logger.error("Failed to start SessionManager boot session: %s", session_err)
 
     try:
         if args.gui:
