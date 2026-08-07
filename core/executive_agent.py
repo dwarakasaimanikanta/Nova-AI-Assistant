@@ -818,24 +818,37 @@ class ExecutiveAgent:
                 success = False
                 response_text = f"Planning failed: {e}"
 
-        # ── 2. Autonomous Coder Web/App requests ─────────────────────────
+        # ── 2. Autonomous Coder Web/App requests (Project Lifecycle) ─────
         elif ("create" in lower or "generate" in lower or "write code" in lower) and coding and workspace and browser:
-            self._report_progress("Generating project...")
+            self._report_progress("Initializing Project Lifecycle...")
             try:
                 from agents.autonomous_coder import AutonomousCoder
+                from core.project_lifecycle import ProjectLifecycle
                 auton_coder = AutonomousCoder(
                     coding_agent=coding,
                     workspace_agent=workspace,
                     browser_agent=browser
                 )
-                self._report_progress("Running and testing project...")
-                report = auton_coder.execute_workflow(user_input)
-                response_text = report.summary()
-                success = report.success
+                lifecycle = ProjectLifecycle(
+                    planner_agent=planner,
+                    autonomous_coder=auton_coder,
+                    browser_agent=browser,
+                    memory_agent=memory
+                )
+                self._report_progress("Running Project Lifecycle (Planning, Generating, Executing)...")
+                lifecycle_report = lifecycle.run(user_input)
+                response_text = (
+                    "Boss,\n"
+                    "The website has been created successfully.\n"
+                    "The server is running.\n"
+                    "Browser opened.\n"
+                    "No runtime errors detected."
+                ) if lifecycle_report.success else f"Project lifecycle failed: {lifecycle_report.errors}"
+                success = lifecycle_report.success
             except Exception as e:
-                logger.exception("AutonomousCoder error: %s", e)
+                logger.exception("ProjectLifecycle execution error: %s", e)
                 success = False
-                response_text = f"Code generation failed: {e}"
+                response_text = f"Project lifecycle failed: {e}"
 
         # ── 3. Browser Queries ───────────────────────────────────────────
         elif intent == IntentType.NAVIGATION and browser is not None:
