@@ -1,163 +1,125 @@
 """
 tests/test_boot_manager.py
 --------------------------
-Comprehensive unit and integration tests for the Boot Experience Manager.
+Comprehensive unit and integration tests for the real startup BootManager.
 """
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.boot_manager import BootManager
+from core.boot_manager import BootManager, BootReport
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Mocks & Fixtures
-# ─────────────────────────────────────────────────────────────────────────────
-
-@pytest.fixture
-def mock_service_manager():
-    sm = MagicMock()
-    # Mock registry list_services, get_service, get_status
-    sm.registry = MagicMock()
-    
-    # Set default values for list_services
-    sm.registry.list_services.return_value = ["Memory", "Voice", "Browser", "Android"]
-    
-    # Mock get_service
-    mock_service = MagicMock()
-    mock_service.health.return_value = True
-    sm.registry.get_service.return_value = mock_service
-    
-    # Mock get_status
-    mock_status = MagicMock()
-    mock_status.state = "RUNNING"
-    sm.registry.get_status.return_value = mock_status
-    
-    return sm
-
-
-@pytest.fixture
-def mock_session_manager():
-    sm = MagicMock()
-    sm.trigger_startup_greeting.return_value = "Nova is online. Ready for commands."
-    return sm
-
-
-@pytest.fixture
-def mock_voice_manager():
-    vm = MagicMock()
-    vm.voice_input_enabled = True
-    vm.wake_word_enabled = False
-    vm.state = "WAKING"
-    vm.tts = MagicMock()
-    return vm
-
-
-@pytest.fixture
-def mock_memory_agent():
-    ma = MagicMock()
-    ma.recall.return_value = None
-    return ma
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# BootManager Test Suite
+# Test Suite
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestBootManager:
-    def test_boot_success_with_all_services(
-        self, mock_service_manager, mock_session_manager, mock_voice_manager, mock_memory_agent
+    @patch("core.config_service.ConfigService")
+    @patch("core.agent_registry.AgentRegistry")
+    @patch("core.executive_agent.ExecutiveAgent")
+    @patch("core.session_manager.SessionManager")
+    @patch("voice.voice_manager.VoiceManager")
+    @patch("voice.always_listening.AlwaysListeningEngine")
+    @patch("voice.conversation_engine.VoiceConversationEngine")
+    @patch("core.execution_pipeline.ExecutionPipeline")
+    def test_boot_integration_pipeline_success(
+        self,
+        mock_pipeline_cls,
+        mock_conv_cls,
+        mock_listening_cls,
+        mock_voice_cls,
+        mock_session_cls,
+        mock_exec_cls,
+        mock_registry_cls,
+        mock_config_cls
     ):
-        boot_mgr = BootManager(
-            service_manager=mock_service_manager,
-            session_manager=mock_session_manager,
-            voice_manager=mock_voice_manager,
-            memory_agent=mock_memory_agent,
-        )
-
-        success = boot_mgr.boot()
-        assert success is True
+        # Configure registry mock
+        mock_registry = MagicMock()
+        mock_registry_cls.return_value = mock_registry
         
-        # Verify startup greeting generated and spoken
-        mock_session_manager.trigger_startup_greeting.assert_called_once()
-        mock_voice_manager.tts.execute.assert_called_once_with(text="Nova is online. Ready for commands.")
-        
-        # Verify voice manager enters always listening mode
-        assert mock_voice_manager.wake_word_enabled is True
-        assert mock_voice_manager.state == "WAITING"
-        mock_voice_manager.start.assert_called_once()
+        mock_memory = MagicMock()
+        mock_memory.recall.return_value = "restored_session_xyz"
+        mock_registry.resolve.side_effect = lambda name: mock_memory if name == "memory" else MagicMock()
+        mock_registry.is_registered.return_value = True
 
-    def test_boot_restores_session_from_memory(
-        self, mock_service_manager, mock_session_manager, mock_voice_manager, mock_memory_agent
+        # Configure session mock
+        mock_session_mgr = MagicMock()
+        mock_session_cls.return_value = mock_session_mgr
+
+        # Configure voice manager mock
+        mock_voice_mgr = MagicMock()
+        mock_voice_mgr.voice_input_enabled = True
+        mock_voice_cls.return_value = mock_voice_mgr
+
+        # Configure always listening mock
+        mock_listening = MagicMock()
+        mock_listening_cls.return_value = mock_listening
+
+        # Run boot
+        boot_mgr = BootManager()
+        report = boot_mgr.boot()
+
+        # Verify BootReport structure
+        assert report.success is True
+        assert report.session_id == "restored_session_xyz"
+        assert len(report.initialized_components) > 5
+        assert len(report.errors) == 0
+        assert "Boss" in report.greeting
+
+        # Verify interaction wiring
+        mock_session_mgr.start_session.assert_called_once_with("restored_session_xyz")
+        mock_listening.start.assert_called_once()
+        assert mock_voice_mgr.wake_word_enabled is True
+        assert mock_voice_mgr.state == "WAITING"
+
+    @patch("core.config_service.ConfigService")
+    @patch("core.agent_registry.AgentRegistry")
+    def test_boot_failure_returns_failed_report(self, mock_registry_cls, mock_config_cls):
+        # Configure config service to raise exception
+        mock_config = MagicMock()
+        mock_config.initialize.side_effect = RuntimeError("Database corrupt")
+        mock_config_cls.return_value = mock_config
+
+        boot_mgr = BootManager()
+        report = boot_mgr.boot()
+
+        assert report.success is False
+        assert len(report.errors) > 0
+        assert "Database corrupt" in report.errors[0]
+
+    @patch("core.config_service.ConfigService")
+    @patch("core.agent_registry.AgentRegistry")
+    @patch("core.executive_agent.ExecutiveAgent")
+    @patch("core.session_manager.SessionManager")
+    @patch("voice.voice_manager.VoiceManager")
+    @patch("voice.always_listening.AlwaysListeningEngine")
+    @patch("voice.conversation_engine.VoiceConversationEngine")
+    @patch("core.execution_pipeline.ExecutionPipeline")
+    def test_boot_duplicate_initialization_safety(
+        self,
+        mock_pipeline_cls,
+        mock_conv_cls,
+        mock_listening_cls,
+        mock_voice_cls,
+        mock_session_cls,
+        mock_exec_cls,
+        mock_registry_cls,
+        mock_config_cls
     ):
-        mock_memory_agent.recall.return_value = "restored_session_abc"
+        mock_registry = MagicMock()
+        mock_registry_cls.return_value = mock_registry
+        mock_registry.is_registered.return_value = True
+
+        boot_mgr = BootManager()
+        report1 = boot_mgr.boot()
+        assert report1.success is True
+
+        # Second boot call
+        report2 = boot_mgr.boot()
+        assert report2.success is True
+        assert "CacheRestore" in report2.initialized_components
         
-        boot_mgr = BootManager(
-            service_manager=mock_service_manager,
-            session_manager=mock_session_manager,
-            voice_manager=mock_voice_manager,
-            memory_agent=mock_memory_agent,
-        )
-
-        success = boot_mgr.boot()
-        assert success is True
-        
-        # Verify we restored the session
-        mock_session_manager.start_session.assert_called_once_with("restored_session_abc")
-        # Verify we stored the session in memory again
-        mock_memory_agent.remember.assert_any_call("short_term", "last_session_id", "restored_session_abc")
-
-    def test_boot_mandatory_service_failure_raises_error(
-        self, mock_service_manager, mock_session_manager, mock_voice_manager, mock_memory_agent
-    ):
-        # Make mandatory service "Memory" unhealthy/fail to start
-        def mock_get_status(name):
-            if name == "Memory":
-                status = MagicMock()
-                status.state = "FAILED"
-                return status
-            status = MagicMock()
-            status.state = "RUNNING"
-            return status
-
-        mock_service_manager.registry.get_status.side_effect = mock_get_status
-        # Mock health check to return False for Memory
-        mock_service = MagicMock()
-        mock_service.health.side_effect = lambda: False
-        mock_service_manager.registry.get_service.return_value = mock_service
-
-        boot_mgr = BootManager(
-            service_manager=mock_service_manager,
-            session_manager=mock_session_manager,
-            voice_manager=mock_voice_manager,
-            memory_agent=mock_memory_agent,
-        )
-
-        with pytest.raises(RuntimeError, match="Memory"):
-            boot_mgr.boot()
-
-    def test_boot_optional_service_failure_ignored(
-        self, mock_service_manager, mock_session_manager, mock_voice_manager, mock_memory_agent
-    ):
-        # Make optional service "Browser" unhealthy/fail to start
-        def mock_get_status(name):
-            status = MagicMock()
-            if name == "Browser":
-                status.state = "FAILED"
-            else:
-                status.state = "RUNNING"
-            return status
-
-        mock_service_manager.registry.get_status.side_effect = mock_get_status
-
-        boot_mgr = BootManager(
-            service_manager=mock_service_manager,
-            session_manager=mock_session_manager,
-            voice_manager=mock_voice_manager,
-            memory_agent=mock_memory_agent,
-        )
-
-        # Boot should succeed because Browser is optional
-        success = boot_mgr.boot()
-        assert success is True
+        # Verify config was initialized only once
+        mock_config_cls.return_value.initialize.assert_called_once()

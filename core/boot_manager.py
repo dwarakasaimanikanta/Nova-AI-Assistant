@@ -1,137 +1,234 @@
 """
 core/boot_manager.py
 --------------------
-Boot Experience Manager coordinating complete startup sequence,
-service health checks, session recovery, and voice activation.
+Real Startup Integration Boot Manager acting as the single entry point
+for system bootstrap, component wiring, health checks, and session restoration.
 """
 
 from __future__ import annotations
 
+import datetime
 import time
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any, List, Optional
 
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Boot Report
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class BootReport:
+    """Detailed startup diagnostics and wiring outcomes report."""
+    success: bool
+    session_id: str
+    duration: float
+    initialized_components: List[str] = field(default_factory=list)
+    skipped_components: List[str] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+    greeting: str = ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Boot Manager
+# ─────────────────────────────────────────────────────────────────────────────
+
 class BootManager:
-    """Coordinates startup sequences, session restoration, and subsystem readiness checks."""
+    """Single entry point coordinating the real startup pipeline initialization and wiring."""
 
-    def __init__(
-        self,
-        service_manager: Any,
-        session_manager: Any,
-        voice_manager: Optional[Any] = None,
-        memory_agent: Optional[Any] = None,
-    ) -> None:
-        self.service_manager = service_manager
-        self.session_manager = session_manager
-        self.voice_manager = voice_manager
-        self.memory_agent = memory_agent
+    def __init__(self) -> None:
+        self.config_service: Optional[Any] = None
+        self.agent_registry: Optional[Any] = None
+        self.memory_agent: Optional[Any] = None
+        self.session_manager: Optional[Any] = None
+        self.voice_manager: Optional[Any] = None
+        self.always_listening: Optional[Any] = None
+        self.conversation_engine: Optional[Any] = None
+        self.execution_pipeline: Optional[Any] = None
+        self.executive_agent: Optional[Any] = None
+        self.initialized = False
 
-    def boot(self, session_id: Optional[str] = None) -> bool:
+    def boot(self, session_id: Optional[str] = None) -> BootReport:
         """
-        Executes the entire boot lifecycle sequence.
-        
-        Steps:
-        1. Initialize/Verify MemoryAgent and VoiceManager.
-        2. Wait/start mandatory services.
-        3. Gracefully skip optional services.
-        4. Restore or create session.
-        5. Speak/trigger startup greeting.
-        6. Enter Always Listening mode.
+        Runs the complete real startup integration sequence.
+        Wires all services and pipelines together, returning a BootReport.
         """
-        logger.info("[BootManager] Commencing boot sequence...")
+        started = time.time()
+        initialized_components = []
+        skipped_components = []
+        errors = []
 
-        # ── 1. Initialize core services ────────────────────────────────────
-        if self.memory_agent:
-            try:
-                # Ensure the DB schema is valid
-                self.memory_agent.remember("working", "boot_check", "ok")
-                logger.info("[BootManager] MemoryAgent verified successfully.")
-            except Exception as e:
-                logger.error("[BootManager] MemoryAgent initialization failed: %s", e)
-                raise RuntimeError(f"MemoryAgent failed startup health check: {e}")
+        logger.info("[BootManager] Starting real startup integration pipeline...")
 
-        # ── 2. Wait for mandatory/optional services to be healthy ────────
-        mandatory_services = ["Memory", "Voice"]
-        optional_services = ["Browser", "Android"]
-
-        # First verify and startup mandatory
-        for service_name in mandatory_services:
-            if not self._ensure_service_healthy(service_name):
-                logger.error("[BootManager] Mandatory service '%s' is not healthy. Aborting.", service_name)
-                raise RuntimeError(f"Mandatory service '{service_name}' failed to boot.")
-
-        # Gracefully handle optional services
-        for service_name in optional_services:
-            if not self._ensure_service_healthy(service_name):
-                logger.warning("[BootManager] Optional service '%s' is degraded/unavailable. Skipping.", service_name)
-
-        # ── 3. Restore previous session or create new one ─────────────────
-        if not session_id and self.memory_agent:
-            try:
-                session_id = self.memory_agent.recall("short_term", "last_session_id")
-                if session_id:
-                    logger.info("[BootManager] Restoring previous session ID: %s", session_id)
-            except Exception as recall_err:
-                logger.warning("[BootManager] Failed to recall last session ID: %s", recall_err)
-
-        if not session_id:
-            session_id = f"session_{int(time.time())}"
-            logger.info("[BootManager] Starting new session: %s", session_id)
+        # Avoid duplicate initialization
+        if self.initialized:
+            logger.info("[BootManager] Already initialized. Returning cached boot report.")
+            duration = time.time() - started
+            return BootReport(
+                success=True,
+                session_id=getattr(self.session_manager.current_session, "session_id", "cached_session") if self.session_manager else "cached",
+                duration=duration,
+                initialized_components=["CacheRestore"],
+                greeting="Nova is already online."
+            )
 
         try:
+            # 1. Initialize ConfigService
+            from core.config_service import ConfigService
+            self.config_service = ConfigService()
+            self.config_service.initialize()
+            initialized_components.append("ConfigService")
+
+            # 2. Initialize AgentRegistry & register defaults
+            from core.agent_registry import AgentRegistry
+            self.agent_registry = AgentRegistry()
+            self.agent_registry.load_defaults()
+            initialized_components.append("AgentRegistry")
+
+            # 3. Initialize MemoryAgent
+            try:
+                self.memory_agent = self.agent_registry.resolve("memory")
+                # Trigger a mock call to verify schema
+                self.memory_agent.remember("working", "boot_check", "ok")
+                initialized_components.append("MemoryAgent")
+            except Exception as e:
+                errors.append(f"MemoryAgent init failed: {e}")
+                logger.error("[BootManager] MemoryAgent failed startup check: %s", e)
+
+            # 4. Initialize Core Engine & ExecutiveAgent
+            from core.engine import NovaEngine
+            from core.executive_agent import ExecutiveAgent
+            engine = NovaEngine()
+            self.executive_agent = ExecutiveAgent(engine=engine, agent_registry=self.agent_registry)
+            self.agent_registry.set_engine(engine)
+            initialized_components.append("ExecutiveAgent")
+
+            # 5. Initialize SessionManager
+            from core.session_manager import SessionManager
+            self.session_manager = SessionManager(voice_manager=None)
+            initialized_components.append("SessionManager")
+
+            # 6. Restore previous session if available
+            if not session_id and self.memory_agent:
+                try:
+                    session_id = self.memory_agent.recall("short_term", "last_session_id")
+                except Exception as recall_err:
+                    logger.debug("Failed recalling last session ID: %s", recall_err)
+
+            if not session_id:
+                session_id = f"session_{int(time.time())}"
+            
             self.session_manager.start_session(session_id)
             if self.memory_agent:
                 self.memory_agent.remember("short_term", "last_session_id", session_id)
-        except Exception as sess_err:
-            logger.error("[BootManager] SessionManager failed to start/restore session: %s", sess_err)
-            return False
 
-        # ── 4. Generate and speak startup greeting ────────────────────────
-        greeting = self.session_manager.trigger_startup_greeting()
+            # 7. Initialize VoiceManager
+            from voice.voice_manager import VoiceManager
+            self.voice_manager = VoiceManager(engine=engine)
+            self.session_manager.voice_manager = self.voice_manager
+            initialized_components.append("VoiceManager")
+
+            # 8. Initialize AlwaysListeningEngine
+            from voice.always_listening import AlwaysListeningEngine
+            self.always_listening = AlwaysListeningEngine(
+                voice_manager=self.voice_manager,
+                wake_detector=self.voice_manager.wake_detector,
+                audio_recorder=self.voice_manager.recorder
+            )
+            initialized_components.append("AlwaysListeningEngine")
+
+            # 9. Initialize ConversationEngine
+            from voice.conversation_engine import VoiceConversationEngine
+            self.conversation_engine = VoiceConversationEngine(
+                executive_agent=self.executive_agent,
+                voice_manager=self.voice_manager,
+                memory_agent=self.memory_agent
+            )
+            self.always_listening.on_command_callback = self.conversation_engine.process_speech
+            initialized_components.append("ConversationEngine")
+
+            # 10. Initialize ExecutionPipeline
+            from core.execution_pipeline import ExecutionPipeline
+            planner_agent = None
+            if self.agent_registry.is_registered("planner"):
+                planner_agent = self.agent_registry.resolve("planner")
+            
+            self.execution_pipeline = ExecutionPipeline(
+                executive_agent=self.executive_agent,
+                agent_registry=self.agent_registry,
+                planner_agent=planner_agent,
+                memory_agent=self.memory_agent
+            )
+            initialized_components.append("ExecutionPipeline")
+
+            # Resolve optional agents and log status
+            optional_agents = ["browser", "android", "coding", "workspace"]
+            for opt in optional_agents:
+                if self.agent_registry.is_registered(opt):
+                    try:
+                        self.agent_registry.resolve(opt)
+                        initialized_components.append(f"Agent:{opt.capitalize()}")
+                    except Exception as opt_err:
+                        skipped_components.append(opt)
+                        logger.warning("[BootManager] Optional agent '%s' failed to resolve: %s", opt, opt_err)
+                else:
+                    skipped_components.append(opt)
+
+        except Exception as startup_err:
+            logger.exception("Critical system bootstrap error: %s", startup_err)
+            errors.append(str(startup_err))
+            duration = time.time() - started
+            return BootReport(
+                success=False,
+                session_id=session_id or "failed",
+                duration=duration,
+                initialized_components=initialized_components,
+                skipped_components=skipped_components,
+                errors=errors
+            )
+
+        # 11. Generate startup greeting prefix based on time of day
+        hour = datetime.datetime.now().hour
+        greeting_time = "Good morning"
+        if 12 <= hour < 17:
+            greeting_time = "Good afternoon"
+        elif 17 <= hour < 22:
+            greeting_time = "Good evening"
+        elif hour >= 22 or hour < 5:
+            greeting_time = "Good night"
+
+        greeting = f"{greeting_time} Boss.\nAll core systems are online.\nI'm ready."
+
+        # Speak greeting if voice outputs are supported
         if self.voice_manager and getattr(self.voice_manager, "voice_input_enabled", False):
             try:
-                # Speak greeting
                 if hasattr(self.voice_manager, "tts") and hasattr(self.voice_manager.tts, "execute"):
                     self.voice_manager.tts.execute(text=greeting)
-                elif hasattr(self.voice_manager, "speak"):
-                    self.voice_manager.speak(greeting)
             except Exception as tts_err:
-                logger.warning("[BootManager] Failed to speak greeting text: %s", tts_err)
+                logger.debug("Failed speaking startup greeting: %s", tts_err)
 
-        # ── 5. Prepare always listening mode ──────────────────────────────
-        if self.voice_manager and getattr(self.voice_manager, "voice_input_enabled", False):
+        # 12. Switch to Always Listening mode
+        if self.voice_manager:
             self.voice_manager.wake_word_enabled = True
-            # Transition state of voice manager
             self.voice_manager.state = "WAITING"
-            # Start listener background thread
-            self.voice_manager.start()
-            logger.info("[BootManager] Always Listening mode activated.")
+            if getattr(self.voice_manager, "voice_input_enabled", False):
+                self.always_listening.start()
+                logger.info("[BootManager] Always Listening background thread started.")
 
-        logger.info("[BootManager] Boot sequence completed successfully.")
-        return True
-
-    def _ensure_service_healthy(self, name: str) -> bool:
-        """Verify service health state, attempting to start it if not running."""
-        registry = self.service_manager.registry
-        service = registry.get_service(name)
-        if not service:
-            return False
-
-        # Check existing status state
-        status = registry.get_status(name)
-        if status and status.state == "RUNNING":
-            return service.health()
-
-        # Try to initialize and start the service
-        try:
-            logger.info("[BootManager] Service '%s' not running. Attempting boot...", name)
-            self.service_manager.start_service(name)
-            status = registry.get_status(name)
-            return status is not None and status.state == "RUNNING" and service.health()
-        except Exception as e:
-            logger.error("[BootManager] Service '%s' failed to start: %s", name, e)
-            return False
+        self.initialized = True
+        duration = time.time() - started
+        logger.info("[BootManager] Startup bootstrap completed successfully in %.2fs.", duration)
+        
+        return BootReport(
+            success=True,
+            session_id=session_id,
+            duration=duration,
+            initialized_components=initialized_components,
+            skipped_components=skipped_components,
+            errors=errors,
+            greeting=greeting
+        )
