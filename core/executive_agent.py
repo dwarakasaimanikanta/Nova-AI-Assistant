@@ -381,12 +381,14 @@ class StepExecutor:
         coding_agent: Optional[Any] = None,
         browser_agent: Optional[Any] = None,
         android_agent: Optional[Any] = None,
+        agent_registry: Optional[Any] = None,
     ) -> None:
         self.engine = engine
         self.progress_callback = progress_callback
         self.coding_agent = coding_agent
         self.browser_agent = browser_agent
         self.android_agent = android_agent
+        self.agent_registry = agent_registry
         self.intent_analyzer = IntentAnalyzer()
 
     def execute(self, step: ExecutionStep, cancel_event: Optional[threading.Event] = None) -> str:
@@ -396,37 +398,127 @@ class StepExecutor:
             step.output_data = self.CLARIFICATION_RESPONSE
             return self.CLARIFICATION_RESPONSE
 
-        # Determine if we can route this step to a specialized agent based on intent
+        # Resolve sub-agents dynamically from constructor or registry
+        reg = self.agent_registry
+        coding = self.coding_agent or (reg.resolve("coding") if reg and reg.is_registered("coding") else None)
+        browser = self.browser_agent or (reg.resolve("browser") if reg and reg.is_registered("browser") else None)
+        android = self.android_agent or (reg.resolve("android") if reg and reg.is_registered("android") else None)
+        workspace = getattr(self, "workspace_agent", None) or (reg.resolve("workspace") if reg and reg.is_registered("workspace") else None)
+        planner = getattr(self, "planner_agent", None) or (reg.resolve("planner") if reg and reg.is_registered("planner") else None)
+        memory = getattr(self, "memory_agent", None) or (reg.resolve("memory") if reg and reg.is_registered("memory") else None)
+
+        # Log to memory if active
+        if memory is not None:
+            try:
+                memory.remember(
+                    category="short_term",
+                    key="last_step_input",
+                    value=step.input_data,
+                    tags=["context", "execution"]
+                )
+            except Exception as mem_err:
+                logger.debug("Failed logging execution input to memory: %s", mem_err)
+
+        lower = step.input_data.lower()
+
+        # Route memory requests
+        is_mem_action = lower.startswith("remember") or lower.startswith("recall") or "memory" in lower
+        if is_mem_action and memory is not None:
+            try:
+                result = memory.handle_input(step.input_data)
+                if not result.startswith("No memories matched"):
+                    step.output_data = result
+                    step.status = ExecutionStatus.SUCCESS
+                    step.finished_at = time.time()
+                    self._report(step)
+                    return result
+            except Exception as e:
+                logger.exception("[ExecutiveAgent] Exception in MemoryAgent: %s", e)
+
+        # Route planner requests
+        is_goal = False
+        goal_keywords = (
+            "plan to", "goal:", "solve goal", "steps to solve",
+            "complex plan", "first do", "composite task"
+        )
+        if any(kw in lower for kw in goal_keywords) or "\n" in lower:
+            is_goal = True
+
+        if is_goal and planner is not None:
+            try:
+                from agents.planner_agent import PlannerState
+                result = planner.execute(step.input_data)
+                if result.status == PlannerState.SUCCESS:
+                    step.output_data = result.final_summary
+                    step.status = ExecutionStatus.SUCCESS
+                    step.finished_at = time.time()
+                    self._report(step)
+                    return result.final_summary
+                else:
+                    logger.warning("[ExecutiveAgent] PlannerAgent failed. Falling back to NovaEngine.")
+            except Exception as e:
+                logger.exception("[ExecutiveAgent] Exception in PlannerAgent: %s", e)
+
+        # Route workspace requests
+        is_workspace = False
+        workspace_keywords = (
+            "create project", "open project", "delete project", "archive project",
+            "create folder", "create directory", "mkdir", "rename folder",
+            "move folder", "delete folder", "rmdir", "create file", "read file",
+            "write file", "append file", "rename file", "copy file", "move file",
+            "delete file", "search workspace", "list directory", "list files",
+            "create template", "zip", "unzip", "open vs code", "open terminal",
+            "open file explorer", "open explorer"
+        )
+        if any(kw in lower for kw in workspace_keywords):
+            is_workspace = True
+
+        if is_workspace and workspace is not None:
+            try:
+                from agents.workspace_agent import WorkspaceStatus
+                result = workspace.execute(step.input_data)
+                if result.status == WorkspaceStatus.SUCCESS:
+                    step.output_data = result.final_output
+                    step.status = ExecutionStatus.SUCCESS
+                    step.finished_at = time.time()
+                    self._report(step)
+                    return result.final_output
+                else:
+                    logger.warning("[ExecutiveAgent] WorkspaceAgent failed. Falling back to NovaEngine.")
+            except Exception as e:
+                logger.exception("[ExecutiveAgent] Exception in WorkspaceAgent: %s", e)
+
+        # Determine if we can route this step to standard sub-agents
         intent = self.intent_analyzer.analyze(step.input_data)
         agent_executed = False
         agent_success = False
         agent_output = ""
 
         try:
-            if intent == IntentType.CREATION and self.coding_agent is not None:
+            if intent == IntentType.CREATION and coding is not None:
                 from agents.coding_agent import CodingStatus
                 agent_executed = True
-                coding_result = self.coding_agent.execute(step.input_data)
+                coding_result = coding.execute(step.input_data)
                 if coding_result.status == CodingStatus.SUCCESS:
                     agent_success = True
                     agent_output = coding_result.summary()
                 else:
                     logger.warning("[ExecutiveAgent] CodingAgent failed: %s. Falling back to NovaEngine.", coding_result.errors)
 
-            elif intent == IntentType.NAVIGATION and self.browser_agent is not None:
+            elif intent == IntentType.NAVIGATION and browser is not None:
                 from agents.browser_agent import BrowserStatus
                 agent_executed = True
-                browser_result = self.browser_agent.execute(step.input_data)
+                browser_result = browser.execute(step.input_data)
                 if browser_result.status == BrowserStatus.SUCCESS:
                     agent_success = True
                     agent_output = browser_result.final_output or browser_result.summary()
                 else:
                     logger.warning("[ExecutiveAgent] BrowserAgent failed: %s. Falling back to NovaEngine.", browser_result.errors)
 
-            elif intent == IntentType.COMMUNICATION and self.android_agent is not None:
+            elif intent == IntentType.COMMUNICATION and android is not None:
                 from agents.android_agent import AndroidStatus
                 agent_executed = True
-                android_result = self.android_agent.execute(step.input_data)
+                android_result = android.execute(step.input_data)
                 if android_result.status == AndroidStatus.SUCCESS:
                     agent_success = True
                     agent_output = android_result.final_output or android_result.summary()
@@ -442,9 +534,23 @@ class StepExecutor:
             step.status = ExecutionStatus.SUCCESS
             step.finished_at = time.time()
             self._report(step)
+
+            # Log to memory if active
+            if memory is not None:
+                try:
+                    memory.remember(
+                        category="working",
+                        key="last_step_output",
+                        value=agent_output,
+                        tags=["context", "output"]
+                    )
+                except Exception as mem_err:
+                    logger.debug("Failed logging execution outcome to memory: %s", mem_err)
+
             return agent_output
 
         # Otherwise (or if fallback occurred), execute via NovaEngine
+
         attempt = 0
         while attempt <= step.max_retries:
             if cancel_event and cancel_event.is_set():
@@ -578,6 +684,7 @@ class ExecutiveAgent:
         coding_agent: Optional[Any] = None,
         browser_agent: Optional[Any] = None,
         android_agent: Optional[Any] = None,
+        agent_registry: Optional[Any] = None,
     ) -> None:
         """
         Args:
@@ -586,17 +693,20 @@ class ExecutiveAgent:
             coding_agent: Optional CodingAgent instance.
             browser_agent: Optional BrowserAgent instance.
             android_agent: Optional AndroidAgent instance.
+            agent_registry: Optional AgentRegistry instance.
         """
         self.engine            = engine
         self.intent_analyzer   = IntentAnalyzer()
         self.task_classifier   = TaskClassifier()
         self.planner           = ExecutionPlanner()
+        self.agent_registry    = agent_registry
         self.step_executor     = StepExecutor(
             engine,
             progress_callback=progress_callback,
             coding_agent=coding_agent,
             browser_agent=browser_agent,
             android_agent=android_agent,
+            agent_registry=agent_registry,
         )
         self.result_collector  = ResultCollector()
         self._cancel_event     = threading.Event()
