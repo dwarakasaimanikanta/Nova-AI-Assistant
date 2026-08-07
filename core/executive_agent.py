@@ -715,62 +715,217 @@ class ExecutiveAgent:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
+    def _report_progress(self, message: str) -> None:
+        if self.step_executor and self.step_executor.progress_callback:
+            try:
+                dummy_step = ExecutionStep(
+                    step_id="progress",
+                    description=message,
+                    input_data=message
+                )
+                dummy_step.status = ExecutionStatus.RUNNING
+                self.step_executor.progress_callback(dummy_step)
+            except Exception:
+                pass
+
     def execute(self, user_input: str) -> ExecutionResult:
         """
-        Full synchronous pipeline: intent → plan → execute → result.
-
-        Args:
-            user_input: Raw text from the user.
-
-        Returns:
-            ExecutionResult with the final response and statistics.
+        Routes the user request, resolves specialized sub-agents via AgentRegistry,
+        invokes planners, retries tasks, and records outcomes in MemoryAgent.
         """
         self._cancel_event.clear()
         started = time.time()
         user_input = user_input.strip()
         logger.info("[ExecutiveAgent] Received input: %r", user_input)
 
-        # ── 1. Intent analysis ─────────────────────────────────────────────
+        # Notify initial progress
+        self._report_progress("Planning...")
+
+        # Resolve registry and sub-agents
+        reg = self.agent_registry
+        planner = reg.resolve("planner") if reg and reg.is_registered("planner") else None
+        coding = reg.resolve("coding") if reg and reg.is_registered("coding") else None
+        browser = reg.resolve("browser") if reg and reg.is_registered("browser") else None
+        android = reg.resolve("android") if reg and reg.is_registered("android") else None
+        workspace = reg.resolve("workspace") if reg and reg.is_registered("workspace") else None
+        memory = reg.resolve("memory") if reg and reg.is_registered("memory") else None
+
         intent = self.intent_analyzer.analyze(user_input)
-        logger.info("[ExecutiveAgent] Intent: %s", intent)
-
-        # ── 2. Task classification ─────────────────────────────────────────
         task_type = self.task_classifier.classify(user_input, intent)
-        logger.info("[ExecutiveAgent] TaskType: %s", task_type)
-
-        # ── 3. Build execution plan ────────────────────────────────────────
-        plan = self.planner.build_plan(user_input, intent, task_type)
-        logger.info("[ExecutiveAgent] Plan %s created with %d step(s).", plan.plan_id, len(plan.steps))
-
-        # ── 4. Execute steps sequentially ─────────────────────────────────
-        for step in plan.steps:
-            if self._cancel_event.is_set():
-                step.status = ExecutionStatus.CANCELLED
-                plan.cancelled = True
-                continue
-
-            # Check dependency satisfaction
-            if step.depends_on:
-                deps_ok = all(
-                    any(s.step_id == dep_id and s.status == ExecutionStatus.SUCCESS
-                        for s in plan.steps)
-                    for dep_id in step.depends_on
-                )
-                if not deps_ok:
-                    step.status = ExecutionStatus.SKIPPED
-                    step.output_data = "Skipped: dependency step(s) did not succeed."
-                    continue
-
-            self.step_executor.execute(step, cancel_event=self._cancel_event)
-
-        # ── 5. Collect results ─────────────────────────────────────────────
-        total_duration = time.time() - started
-        result = self.result_collector.collect(plan, total_duration)
-        logger.info(
-            "[ExecutiveAgent] Plan %s finished in %.2fs | status=%s",
-            plan.plan_id, total_duration, result.status
+        
+        response_text = ""
+        success = True
+        lower = user_input.lower()
+        
+        # ── 1. Complex Goal / Multi-step Planner Agent ───────────────────
+        is_planning = False
+        goal_keywords = (
+            "plan to", "goal:", "solve goal", "steps to solve",
+            "complex plan", "first do", "composite task", "create portfolio website",
+            "website", "app"
         )
-        return result
+        if any(kw in lower for kw in goal_keywords) or "\n" in lower or task_type == TaskType.PLANNING:
+            is_planning = True
+
+        if is_planning and planner is not None:
+            self._report_progress("Decomposing goal into tasks...")
+            try:
+                plan_result = planner.execute(user_input)
+                self._report_progress("Running tasks sequentially...")
+                
+                tasks_succeeded = True
+                for task in plan_result.tasks:
+                    self._report_progress(f"Running task: {task.description}...")
+                    
+                    # Run task with 1 retry on failure
+                    attempt = 0
+                    task_success = False
+                    while attempt <= 1:
+                        try:
+                            step = ExecutionStep(
+                                step_id=task.task_id,
+                                description=task.description,
+                                input_data=task.description
+                            )
+                            self.step_executor.execute(step, cancel_event=self._cancel_event)
+                            if step.status == ExecutionStatus.SUCCESS:
+                                task_success = True
+                                break
+                        except Exception as e:
+                            logger.warning("Task execution attempt %d failed: %s", attempt + 1, e)
+                        attempt += 1
+                    
+                    if not task_success:
+                        logger.error("Task '%s' failed after retry.", task.description)
+                        tasks_succeeded = False
+                        
+                    # Save completed task to memory
+                    if memory:
+                        try:
+                            memory.remember(
+                                category="short_term",
+                                key=f"task_{task.task_id}",
+                                value=task.description,
+                                tags=["task", "completed"]
+                            )
+                        except Exception:
+                            pass
+                
+                response_text = plan_result.final_summary or "Plan completed."
+                success = tasks_succeeded
+            except Exception as e:
+                logger.exception("PlannerAgent execution error: %s", e)
+                success = False
+                response_text = f"Planning failed: {e}"
+
+        # ── 2. Autonomous Coder Web/App requests ─────────────────────────
+        elif ("create" in lower or "generate" in lower or "write code" in lower) and coding and workspace and browser:
+            self._report_progress("Generating project...")
+            try:
+                from agents.autonomous_coder import AutonomousCoder
+                auton_coder = AutonomousCoder(
+                    coding_agent=coding,
+                    workspace_agent=workspace,
+                    browser_agent=browser
+                )
+                self._report_progress("Running and testing project...")
+                report = auton_coder.execute_workflow(user_input)
+                response_text = report.summary()
+                success = report.success
+            except Exception as e:
+                logger.exception("AutonomousCoder error: %s", e)
+                success = False
+                response_text = f"Code generation failed: {e}"
+
+        # ── 3. Browser Queries ───────────────────────────────────────────
+        elif intent == IntentType.NAVIGATION and browser is not None:
+            self._report_progress("Searching web using BrowserAgent...")
+            try:
+                res = browser.execute(user_input)
+                response_text = res.final_output or res.summary()
+                success = res.status == "SUCCESS"
+            except Exception as e:
+                success = False
+                response_text = f"Browser query failed: {e}"
+
+        # ── 4. Workspace Operations ──────────────────────────────────────
+        elif workspace is not None and any(kw in lower for kw in ("vs code", "terminal", "folder", "directory", "file")):
+            self._report_progress("Executing workspace operation...")
+            try:
+                res = workspace.execute(user_input)
+                response_text = res.final_output or res.summary()
+                success = res.status == "SUCCESS"
+            except Exception as e:
+                success = False
+                response_text = f"Workspace operation failed: {e}"
+
+        # ── 5. Android Automation ────────────────────────────────────────
+        elif intent == IntentType.COMMUNICATION and android is not None:
+            self._report_progress("Executing android command...")
+            try:
+                res = android.execute(user_input)
+                response_text = res.final_output or res.summary()
+                success = res.status == "SUCCESS"
+            except Exception as e:
+                success = False
+                response_text = f"Android execution failed: {e}"
+
+        # ── 6. Memory requests ───────────────────────────────────────────
+        elif memory is not None and ("remember" in lower or "recall" in lower or "memory" in lower):
+            self._report_progress("Querying MemoryAgent...")
+            try:
+                response_text = memory.handle_input(user_input)
+                success = not response_text.startswith("No memories matched")
+            except Exception as e:
+                success = False
+                response_text = f"Memory check failed: {e}"
+
+        # ── 7. Fallback to NovaEngine ────────────────────────────────────
+        else:
+            self._report_progress("Executing standard query...")
+            try:
+                res = self.engine.handle_input(user_input, stream=False)
+                if hasattr(res, "__iter__") and not isinstance(res, str):
+                    res = "".join(res)
+                response_text = res
+            except Exception as e:
+                success = False
+                response_text = f"Standard query failed: {e}"
+
+        # ── 8. Save final response in MemoryAgent ────────────────────────
+        if memory:
+            try:
+                memory.remember(
+                    category="short_term",
+                    key="last_response",
+                    value=response_text
+                )
+            except Exception:
+                pass
+
+        self._report_progress("Finished.")
+
+        # Build final ExecutionResult object
+        duration = time.time() - started
+        final_result = ExecutionResult(
+            plan_id="orchestrator_plan",
+            status=ExecutionStatus.SUCCESS if success else ExecutionStatus.FAILED,
+            final_response=response_text,
+            steps_executed=1,
+            steps_succeeded=1 if success else 0,
+            steps_failed=0 if success else 1,
+            total_duration=duration,
+            step_results=[
+                {
+                    "step_id": "orchestrator_step",
+                    "description": "Central orchestration query execution",
+                    "status": "SUCCESS" if success else "FAILED",
+                    "output": response_text,
+                    "duration": duration
+                }
+            ]
+        )
+        return final_result
 
     def cancel(self) -> None:
         """Cancel any currently running execution plan."""
