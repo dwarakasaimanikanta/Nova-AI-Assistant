@@ -90,6 +90,21 @@ class PermissionGate:
                 effective_risk = RiskLevel.LOW
             else:
                 effective_risk = RiskLevel.HIGH
+        elif tool.name == "calendar":
+            action = args.get("action")
+            if action == "list_events":
+                effective_risk = RiskLevel.LOW
+            else:
+                effective_risk = RiskLevel.HIGH
+        elif tool.name == "android":
+            action = args.get("action", "")
+            # call/sms/whatsapp/read_contacts are initiated by the user's own voice command
+            # and are safe to auto-approve (LOW risk).
+            # read_notifications accesses private device data and stays HIGH.
+            if action in ("call", "sms", "whatsapp", "read_contacts"):
+                effective_risk = RiskLevel.LOW
+            else:
+                effective_risk = RiskLevel.HIGH
 
         if effective_risk != RiskLevel.HIGH:
             # Low and Medium risk tools are approved automatically

@@ -31,7 +31,7 @@ class BrowserTool(BaseTool):
             "Automates headless and graphical web browsers. "
             "Supported actions: "
             "action='launch_browser' (optional browser_type, headless), "
-            "action='open_url' (requires url), "
+            "action='open_url' (requires url; use this to open web applications like WhatsApp Web, YouTube, Gmail, etc.), "
             "action='search_google' (requires query), "
             "action='click_element' (requires selector), "
             "action='type_text' (requires selector, text), "
@@ -40,6 +40,11 @@ class BrowserTool(BaseTool):
             "action='extract_text', "
             "action='download_file' (requires selector_or_url, save_path), "
             "action='upload_file' (requires selector, file_paths), "
+            "action='press_key' (requires key_name), "
+            "action='wait_for_selector' (requires selector, optional timeout), "
+            "action='click_text' (requires text), "
+            "action='save_browser_session' (optional session_path), "
+            "action='load_browser_session' (optional session_path), "
             "action='close_browser'."
         )
 
@@ -53,7 +58,8 @@ class BrowserTool(BaseTool):
                     "enum": [
                         "launch_browser", "open_url", "search_google", "click_element",
                         "type_text", "scroll_page", "capture_screenshot", "extract_text",
-                        "download_file", "upload_file", "close_browser"
+                        "download_file", "upload_file", "press_key", "wait_for_selector",
+                        "click_text", "save_browser_session", "load_browser_session", "close_browser"
                     ],
                     "description": "The browser agent action to execute.",
                 },
@@ -80,7 +86,7 @@ class BrowserTool(BaseTool):
                 },
                 "text": {
                     "type": "string",
-                    "description": "Text content to type into input fields.",
+                    "description": "Text content to type into input fields or to search/click by text.",
                 },
                 "direction": {
                     "type": "string",
@@ -107,6 +113,19 @@ class BrowserTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Local file paths to upload.",
+                },
+                "key_name": {
+                    "type": "string",
+                    "enum": ["Enter", "Tab", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
+                    "description": "Keyboard key to press (required for press_key)."
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Optional timeout in milliseconds (for wait_for_selector)."
+                },
+                "session_path": {
+                    "type": "string",
+                    "description": "Custom session filepath (default: data/browser_session.json)."
                 },
             },
             "required": ["action"],
@@ -180,6 +199,33 @@ class BrowserTool(BaseTool):
                     return "Failure: Both 'selector' and 'file_paths' list are required for upload_file."
                 return self.manager.upload_file(selector, file_paths)
 
+            elif action == "press_key":
+                key_name = kwargs.get("key_name")
+                if not key_name:
+                    return "Failure: Parameter 'key_name' is required for press_key."
+                return self.manager.press_key(key_name)
+
+            elif action == "wait_for_selector":
+                selector = kwargs.get("selector")
+                timeout = kwargs.get("timeout")
+                if not selector:
+                    return "Failure: Parameter 'selector' is required for wait_for_selector."
+                return self.manager.wait_for_selector(selector, timeout)
+
+            elif action == "click_text":
+                text = kwargs.get("text")
+                if not text:
+                    return "Failure: Parameter 'text' is required for click_text."
+                return self.manager.click_text(text)
+
+            elif action == "save_browser_session":
+                session_path = kwargs.get("session_path", "data/browser_session.json")
+                return self.manager.save_browser_session(session_path)
+
+            elif action == "load_browser_session":
+                session_path = kwargs.get("session_path", "data/browser_session.json")
+                return self.manager.load_browser_session(session_path)
+
             elif action == "close_browser":
                 return self.manager.close_browser()
 
@@ -189,3 +235,11 @@ class BrowserTool(BaseTool):
         except Exception as e:
             logger.error("BrowserTool execute error: %s", e)
             return f"Failure: Browser agent execution error: {e}"
+
+    def shutdown(self) -> None:
+        """Clean shutdown of browser manager."""
+        if hasattr(self, "manager") and self.manager:
+            try:
+                self.manager.shutdown()
+            except Exception as e:
+                logger.error("Failed to shutdown browser manager: %s", e)

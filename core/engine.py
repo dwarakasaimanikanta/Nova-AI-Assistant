@@ -116,6 +116,114 @@ class NovaEngine:
 
         logger.info("Loaded plugin '%s' providing %d tools.", plugin.name, len(plugin.get_tools()))
 
+    def _load_contacts(self) -> dict[str, str]:
+        """Load contact list from data/contacts.json safely."""
+        import json
+        from pathlib import Path
+        contacts_path = Path("data/contacts.json")
+        if contacts_path.exists():
+            try:
+                with open(contacts_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error("Failed to load contacts.json: %s", e)
+        return {}
+
+    def correct_contact_names(self, original_input: str) -> str:
+        """Fuzzy match and correct spoken contact names in user command."""
+        import difflib
+        contacts = self._load_contacts()
+        if not contacts:
+            return original_input
+
+        lower_input = original_input.lower()
+        action_keywords = {
+            "call", "కాల్", "చేయి", "చేయ్", 
+            "message", "sms", "మెసేజ్", "సందేశం", "పంపు", "పంపించు",
+            "whatsapp", "వాట్సాప్"
+        }
+        has_action = any(kw in lower_input for kw in action_keywords)
+        if not has_action:
+            return original_input
+
+        # Transliteration mapping for Telugu spoken/transcribed contact names
+        telugu_to_english = {
+            "అమ్మ": "amma",
+            "నాన్న": "Dad",
+            "జ్ఞాన": "Gnana",
+            "దీపక్": "Deepak",
+            "ప్రదీప్": "Pradeep",
+            "అహమద్": "Ahamed",
+            "అహమ్మద్": "Ahamed",
+            "రవి": "Ravi",
+        }
+
+        def normalize_phonetic(name: str) -> str:
+            name_lower = name.lower()
+            name_lower = name_lower.replace("y", "i")
+            name_lower = name_lower.replace("e", "a")
+            collapsed = []
+            for ch in name_lower:
+                if not collapsed or collapsed[-1] != ch:
+                    collapsed.append(ch)
+            return "".join(collapsed)
+
+        import string
+        punctuation_set = set(string.punctuation) | {"“", "”", "‘", "’", '"', "'"}
+
+        words = original_input.split()
+        corrected_words = []
+
+        for word in words:
+            base_word = word
+            suffix = ""
+            prefix = ""
+
+            # Strip trailing punctuation
+            while base_word and base_word[-1] in punctuation_set:
+                suffix = base_word[-1] + suffix
+                base_word = base_word[:-1]
+
+            # Strip leading punctuation
+            while base_word and base_word[0] in punctuation_set:
+                prefix = prefix + base_word[0]
+                base_word = base_word[1:]
+
+            # Strip Telugu suffixes
+            telugu_suffixes = ["కి", "కు", "తో", "ని", "ను", "యొక్క"]
+            telugu_suffix = ""
+            for ts in telugu_suffixes:
+                if base_word.endswith(ts):
+                    telugu_suffix = ts
+                    base_word = base_word[:-len(ts)]
+                    break
+
+            # Handle Telugu translation if exists
+            base_word_cleaned = base_word.strip()
+            if base_word_cleaned in telugu_to_english:
+                base_word = telugu_to_english[base_word_cleaned]
+
+            if base_word:
+                best_match = None
+                best_ratio = 0.0
+
+                for contact_name in contacts.keys():
+                    ratio_orig = difflib.SequenceMatcher(None, base_word.lower(), contact_name.lower()).ratio()
+                    ratio_norm = difflib.SequenceMatcher(None, normalize_phonetic(base_word), normalize_phonetic(contact_name)).ratio()
+                    ratio = max(ratio_orig, ratio_norm)
+
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_match = contact_name
+
+                if best_ratio >= 0.80 and best_match:
+                    base_word = best_match
+
+            corrected_word = prefix + base_word + telugu_suffix + suffix
+            corrected_words.append(corrected_word)
+
+        return " ".join(corrected_words)
+
     def handle_input(self, user_input: str, stream: bool = False) -> str | Generator[str, None, None]:
         """
         Process the user input, query matching skills, update memory, and return a response.
@@ -126,11 +234,17 @@ class NovaEngine:
 
         Returns:
             The text response or a generator yielding chunks.
-        """
-        cleaned_input = user_input.strip()
-        logger.info("Processing user input: '%s' (stream=%s)", cleaned_input, stream)
+            """
+        original_input = user_input.strip()
+        logger.info("Processing user input: '%s' (stream=%s)", original_input, stream)
 
-        # 1. Log the user's message in memory
+        # Apply contact name correction layer
+        cleaned_input = self.correct_contact_names(original_input)
+        if cleaned_input != original_input:
+            logger.info("Original transcript: '%s'", original_input)
+            logger.info("Corrected contact name transcript: '%s'", cleaned_input)
+
+        # 1. Log the corrected user's message in memory
         self.memory.add_message(role="user", content=cleaned_input)
 
         # Route shell commands directly to TerminalTool to prevent LLM routing/hallucination errors
@@ -193,3 +307,13 @@ class NovaEngine:
             return single_chunk_gen()
 
         return response
+
+    def shutdown(self) -> None:
+        """Shutdown all plugins and background processes."""
+        logger.info("Shutting down NovaEngine plugins...")
+        for plugin in self.plugins:
+            if hasattr(plugin, "shutdown"):
+                try:
+                    plugin.shutdown()
+                except Exception as e:
+                    logger.error("Failed to shutdown plugin %s: %s", plugin.name, e)

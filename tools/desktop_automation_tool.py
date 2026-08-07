@@ -35,7 +35,7 @@ class DesktopAutomationTool(BaseTool):
             "action='press_hotkey' (requires keys list), "
             "action='read_clipboard', "
             "action='write_clipboard' (requires text), "
-            "action='open_application' (requires command_or_path), "
+            "action='open_application' (requires command_or_path; do NOT use this for notepad, calculator, paint, explorer, task manager, calendar, chrome, or google chrome. Use system_control launch_app instead), "
             "action='close_application' (requires process_name_or_pid), "
             "action='focus_window' (requires window_title), "
             "action='create_folder' (requires folder_path), "

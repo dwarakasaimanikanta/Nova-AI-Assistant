@@ -24,10 +24,12 @@ class CalendarTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Manages Google Calendar events. "
+            "Manages Google Calendar events online. "
             "Supports action='list_events' (today's schedule), "
             "action='create_event' (requires summary, start_time, end_time, optional description), "
-            "and action='delete_event' (requires event_id)."
+            "and action='delete_event' (requires event_id). "
+            "This tool does NOT open or launch the local calendar application/window on the desktop. "
+            "To open the local calendar app, use the system_control tool with action='launch_app' and app_name='calendar'."
         )
 
     @property

@@ -96,8 +96,10 @@ class TimeTool(BaseTool):
     def execute(self, **kwargs: Any) -> str:
         logger.debug("Executing TimeTool.")
         now = datetime.now()
-        formatted_now = now.strftime("%Y-%m-%d %H:%M:%S")
-        return f"The current date and time is {formatted_now}."
+        day_str = str(now.day)
+        time_str = now.strftime("%I:%M %p").lstrip("0")
+        date_str = now.strftime(f"%A, %B {day_str}, %Y")
+        return f"The current date and time is {date_str} at {time_str}."
 
 
 class SystemInfoTool(BaseTool):

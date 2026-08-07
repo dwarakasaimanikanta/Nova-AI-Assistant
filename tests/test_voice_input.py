@@ -111,15 +111,31 @@ def test_faster_whisper_transcription(mock_whisper_model: MagicMock, tmp_path: P
 
 
 def test_wake_word_detector() -> None:
-    """Ensure WakeWordDetector flags positive and negative wake word triggers."""
+    """Ensure WakeWordDetector flags positive and negative wake word triggers, including fuzzy variations."""
+    # 1. Exact match
     stt = MockSTT("Hey Nova, what time is it?")
     detector = WakeWordDetector(stt_engine=stt, wake_word="hey nova")
-    
     assert detector.detect(Path("dummy.wav")) is True
-    
+
+    # 2. Common Whisper homophones and variants
+    variants = [
+        "Hey Noah, help me",
+        "Hey Novaa, check this",
+        "Just Nova",
+        "Hey Noba",
+        "Tenoa, status check",
+        "nover",
+        "novah",
+        "no va"
+    ]
+    for variant in variants:
+        stt_v = MockSTT(variant)
+        det_v = WakeWordDetector(stt_engine=stt_v, wake_word="hey nova")
+        assert det_v.detect(Path("dummy.wav")) is True, f"Failed to match variant: {variant}"
+
+    # 3. Obvious negative case
     stt_neg = MockSTT("Hello, what is the weather today?")
     detector_neg = WakeWordDetector(stt_engine=stt_neg, wake_word="hey nova")
-    
     assert detector_neg.detect(Path("dummy.wav")) is False
 
 

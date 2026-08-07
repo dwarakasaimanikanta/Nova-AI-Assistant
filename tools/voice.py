@@ -55,6 +55,11 @@ class VoiceTool(BaseTool):
         logger.info("Executing text-to-speech synthesis: '%s'", text)
         os_platform = platform.system()
 
+        from voice.audio_recorder import AudioRecorder
+        AudioRecorder.playback_active.set()
+
+        stop_event = kwargs.get("stop_event", None)
+
         try:
             if os_platform == "Windows":
                 # Escape single quotes for PowerShell string literal format
@@ -63,18 +68,52 @@ class VoiceTool(BaseTool):
                     f"Add-Type -AssemblyName System.Speech; "
                     f"(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{escaped_text}')"
                 )
-                # Execute asynchronously so it returns immediately and speaks in the background
-                subprocess.Popen(["powershell", "-Command", ps_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                return f"Success: Speaking message out loud in the background: '{text}'"
+                # Execute using Popen and poll regularly to check stop_event
+                proc = subprocess.Popen(["powershell", "-Command", ps_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                while proc.poll() is None:
+                    if stop_event is not None and stop_event.is_set():
+                        logger.info("[Watchdog] TTS synthesis cancelled mid-speak.")
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=1.0)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                        return "Failure: Spoke message cancelled."
+                    import time
+                    time.sleep(0.05)
+                return f"Success: Spoke message out loud: '{text}'"
 
             elif os_platform == "Darwin":  # macOS
-                subprocess.Popen(["say", text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                return f"Success: Speaking message out loud in the background: '{text}'"
+                proc = subprocess.Popen(["say", text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                while proc.poll() is None:
+                    if stop_event is not None and stop_event.is_set():
+                        logger.info("[Watchdog] TTS synthesis cancelled mid-speak.")
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=1.0)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                        return "Failure: Spoke message cancelled."
+                    import time
+                    time.sleep(0.05)
+                return f"Success: Spoke message out loud: '{text}'"
 
             elif os_platform == "Linux":
                 try:
-                    subprocess.Popen(["espeak", text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    return f"Success: Speaking message out loud in the background: '{text}'"
+                    proc = subprocess.Popen(["espeak", text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    while proc.poll() is None:
+                        if stop_event is not None and stop_event.is_set():
+                            logger.info("[Watchdog] TTS synthesis cancelled mid-speak.")
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=1.0)
+                            except subprocess.TimeoutExpired:
+                                proc.kill()
+                            return "Failure: Spoke message cancelled."
+                        import time
+                        time.sleep(0.05)
+                    return f"Success: Spoke message out loud: '{text}'"
                 except FileNotFoundError:
                     logger.warning("espeak not installed on Linux system. Falling back to log print.")
                     return f"Unsupported platform/tool missing: Logged voice message: '{text}'"
@@ -85,3 +124,7 @@ class VoiceTool(BaseTool):
         except Exception as e:
             logger.exception("Error executing voice text-to-speech: %s", e)
             return f"Failure executing text-to-speech: {e}"
+        finally:
+            import time
+            AudioRecorder.playback_finished_time = time.time()
+            AudioRecorder.playback_active.clear()

@@ -8,6 +8,9 @@ from typing import Any
 from plugins.base import BasePlugin
 from tools.base_tool import BaseTool
 from tools.voice import VoiceTool
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class VoicePlugin(BasePlugin):
@@ -26,6 +29,12 @@ class VoicePlugin(BasePlugin):
 
     def initialize_plugin(self, engine: Any) -> None:
         """Initialize the background voice input manager if enabled."""
+        import os
+        import sys
+        if "pytest" in sys.modules or os.getenv("ENVIRONMENT") == "test":
+            logger.info("Testing environment detected (pytest or ENVIRONMENT=test). Skipping VoiceManager background thread start.")
+            return
+
         from config import VOICE_INPUT_ENABLED, WAKE_WORD_ENABLED
         from voice.voice_manager import VoiceManager
         

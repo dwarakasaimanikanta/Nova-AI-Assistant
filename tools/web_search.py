@@ -26,7 +26,8 @@ class WebSearchTool(BaseTool):
         return (
             "Queries the web using DuckDuckGo search and returns the top 5 search results "
             "including title, URL, and a snippet for each result. Use this to find current "
-            "information, facts, or reference tutorials on the web."
+            "information, facts, or reference tutorials on the web. "
+            "Do NOT use this tool to open or launch applications or URLs (use browser_agent or system_control instead)."
         )
 
     @property

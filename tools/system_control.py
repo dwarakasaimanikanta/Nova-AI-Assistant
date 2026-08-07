@@ -28,7 +28,7 @@ class SystemControlTool(BaseTool):
             "Controls system actions on the Windows machine. Supported actions: "
             "'lock_workstation' (locks the screen), 'shutdown' (shuts down the PC in 60s), "
             "'restart' (restarts the PC in 60s), 'sleep' (puts the PC to sleep), and "
-            "'launch_app' (opens a system utility by name like notepad, calc, mspaint, explorer, taskmgr)."
+            "'launch_app' (opens a system utility by name like notepad, calc, mspaint, explorer, taskmgr, calendar, chrome, google chrome)."
         )
 
     @property
@@ -98,6 +98,17 @@ class SystemControlTool(BaseTool):
             if not app_name:
                 return "Failure: Action 'launch_app' requires an 'app_name' parameter."
 
+            if app_name in ("chrome", "google chrome"):
+                chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+                if not os.path.exists(chrome_path):
+                    return "Google Chrome is not installed."
+                try:
+                    subprocess.Popen([chrome_path], shell=True)
+                    return f"Success: Launched application '{app_name}'."
+                except Exception as e:
+                    logger.error("Failed to launch application '%s': %s", app_name, e)
+                    return f"Failure: Failed to launch '{app_name}': {e}"
+
             # Common Windows system tools mapping
             app_map = {
                 "notepad": "notepad.exe",
@@ -108,19 +119,21 @@ class SystemControlTool(BaseTool):
                 "explorer": "explorer.exe",
                 "taskmgr": "taskmgr.exe",
                 "task manager": "taskmgr.exe",
+                "calendar": "explorer.exe outlookcal:",
             }
 
             if app_name not in app_map:
                 # Sanitization check to prevent command injection
                 if not app_name.replace("_", "").isalnum():
                     return f"Failure: Application '{app_name}' contains invalid characters."
-                cmd = f"{app_name}.exe"
+                cmd = [f"{app_name}.exe"]
             else:
-                cmd = app_map[app_name]
+                mapped = app_map[app_name]
+                cmd = mapped.split() if " " in mapped else [mapped]
 
             try:
                 # Start process in background asynchronously so the tool call returns instantly
-                subprocess.Popen([cmd], shell=True)
+                subprocess.Popen(cmd, shell=True)
                 return f"Success: Launched application '{app_name}'."
             except Exception as e:
                 logger.error("Failed to launch application '%s': %s", app_name, e)

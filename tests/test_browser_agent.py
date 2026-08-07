@@ -5,6 +5,7 @@ Unit tests for BrowserManager, BrowserTool, and browser PermissionGate checks.
 Fully mocked to ensure headless execution without requiring actual Playwright browser binaries.
 """
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
@@ -51,7 +52,7 @@ def mock_async_playwright():
 
 def test_browser_manager_actions(mock_async_playwright) -> None:
     """BrowserManager: verify navigations, searches, clicks, typing, and closes call Playwright."""
-    _, _, _, mock_page = mock_async_playwright
+    _, _, mock_context, mock_page = mock_async_playwright
 
     manager = BrowserManager()
     res_launch = manager.launch_browser("chromium", headless=True)
@@ -82,10 +83,42 @@ def test_browser_manager_actions(mock_async_playwright) -> None:
     assert txt == "Page body text content"
     mock_page.inner_text.assert_awaited_with("body")
 
+    # 5a. Keyboard key press
+    mock_page.keyboard = MagicMock()
+    mock_page.keyboard.press = AsyncMock()
+    res_press = manager.press_key("Enter")
+    assert "Success" in res_press
+    mock_page.keyboard.press.assert_awaited_with("Enter")
+
+    # 5b. Wait for selector
+    manager.wait_for_selector("div#target", timeout=5000)
+    mock_page.wait_for_selector.assert_awaited_with("div#target", timeout=5000)
+
+    # 5c. Click element containing text
+    manager.click_text("Send Message")
+    # Verify first match of locator was called
+    mock_page.locator.assert_called_with("text=Send Message")
+
+    # 5d. Save/Load session state
+    mock_context.storage_state = AsyncMock(return_value={})
+    res_save = manager.save_browser_session("data/test_session.json")
+    assert "Success" in res_save
+
+    # Create dummy session file to pass load exists check
+    dummy_session = Path("data/test_session.json")
+    dummy_session.parent.mkdir(parents=True, exist_ok=True)
+    dummy_session.write_text("{}", encoding="utf-8")
+
+    res_load = manager.load_browser_session("data/test_session.json")
+    assert "Success" in res_load
+
+    if dummy_session.exists():
+        dummy_session.unlink()
+
     # 6. Close Browser
     res_close = manager.close_browser()
     assert "Success" in res_close
-    mock_page.close.assert_awaited_once()
+    assert mock_page.close.await_count == 2
 
 
 def test_browser_manager_resiliency_fallback() -> None:
@@ -116,6 +149,26 @@ def test_browser_tool_routing() -> None:
     # 2. Scroll page route
     tool.execute(action="scroll_page", direction="up", amount=200)
     mock_mgr.scroll_page.assert_called_with("up", 200)
+
+    # 3. Keyboard press key route
+    tool.execute(action="press_key", key_name="Enter")
+    mock_mgr.press_key.assert_called_with("Enter")
+
+    # 4. Wait for selector route
+    tool.execute(action="wait_for_selector", selector="div#test", timeout=3000)
+    mock_mgr.wait_for_selector.assert_called_with("div#test", 3000)
+
+    # 5. Click text route
+    tool.execute(action="click_text", text="Click Me")
+    mock_mgr.click_text.assert_called_with("Click Me")
+
+    # 6. Save browser session route
+    tool.execute(action="save_browser_session", session_path="data/test_sess.json")
+    mock_mgr.save_browser_session.assert_called_with("data/test_sess.json")
+
+    # 7. Load browser session route
+    tool.execute(action="load_browser_session", session_path="data/test_sess.json")
+    mock_mgr.load_browser_session.assert_called_with("data/test_sess.json")
 
 
 def test_browser_permission_gate() -> None:

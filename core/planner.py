@@ -257,7 +257,7 @@ class AgentPlanner:
                         "file_manager", "browser", "browser_agent", "terminal", "memory",
                         "web_search", "system_control", "scheduler", "code_helper",
                         "voice_tts", "system_monitor", "vision", "desktop_automation",
-                        "gmail", "calendar", "drive", "document"
+                        "gmail", "calendar", "drive", "document", "android"
                     }
                     if tool_name in direct_return_tools:
                         should_direct_return = True
