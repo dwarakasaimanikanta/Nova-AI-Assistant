@@ -16,11 +16,17 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 try:
-    import sounddevice as sd
     import numpy as np
+    NUMPY_AVAILABLE = True
+except Exception:
+    np = None
+    NUMPY_AVAILABLE = False
+
+try:
+    import sounddevice as sd
     SOUNDDEVICE_AVAILABLE = True
-except (ImportError, Exception) as e:
-    logger.warning("sounddevice or numpy is not available. Microphone capture will be mocked: %s", e)
+except Exception:
+    sd = None
     SOUNDDEVICE_AVAILABLE = False
 
 
@@ -76,19 +82,25 @@ class AudioRecorder:
         else:
             self.max_record_seconds = 3.0
 
-    def record_command(self, stop_event=None, max_record_seconds: float | None = None) -> Path | None:
+    def record_command(
+        self,
+        stop_event=None,
+        max_record_seconds: float | None = None,
+        allow_playback_recording: bool = False,
+        disable_silence_cutoff: bool = False
+    ) -> Path | None:
         """
         Record from microphone until silence is detected, saving the output as a temporary WAV file.
         Returns the Path to the temporary WAV file, or None if failed/cancelled.
         """
-        if not SOUNDDEVICE_AVAILABLE:
+        if not SOUNDDEVICE_AVAILABLE or not NUMPY_AVAILABLE:
             logger.info("Mocking microphone command recording.")
             print("Exit reason: no speech")
             print("record_command() exits")
             print("RETURN")
             return self._create_mock_wav()
 
-        logger.info("Listening for spoken command...")
+        logger.info("[VOICE] Listening for spoken command (max=%.1fs, threshold=%.4f)...", max_record_seconds if max_record_seconds else self.max_record_seconds, self.threshold)
         
         recorded_chunks = []
         silent_count = 0
@@ -96,7 +108,12 @@ class AudioRecorder:
 
         def callback(indata, frames, time_info, status):
             import time
-            if AudioRecorder.playback_active.is_set() or (time.time() - AudioRecorder.playback_finished_time < 1.0):
+            # Allow recording during active playback only when explicitly requested (e.g. for wake-word interruption).
+            # Otherwise, skip to prevent feedback loops.
+            if not allow_playback_recording and AudioRecorder.playback_active.is_set():
+                return
+            # Apply a 0.5s cooldown post-playback to filter out speaker power-down transients/clicks.
+            if not AudioRecorder.playback_active.is_set() and (time.time() - AudioRecorder.playback_finished_time < 0.5):
                 return
             self.audio_queue.put(indata.copy())
 
@@ -190,23 +207,27 @@ class AudioRecorder:
                         silent_count = 0
                     else:
                         if has_spoken:
-                            silent_count += 1
-                            if silent_count >= silence_blocks:
-                                logger.info("[VAD] Silence detected (duration >= %.2f s). Speech capture finished.", self.silence_duration)
-                                break
+                            if not disable_silence_cutoff:
+                                silent_count += 1
+                                if silent_count >= silence_blocks:
+                                    logger.info("[VAD] Silence detected (duration >= %.2f s). Speech capture finished.", self.silence_duration)
+                                    break
                         else:
                             # Keep only the last 1.0 second of audio before speech starts
                             if len(recorded_chunks) > max_pre_speech:
                                 recorded_chunks.pop(0)
                             
                             # Exit early if silence continues for more than initial silence timeout (3.0s)
-                            if total_blocks >= max_initial_silence_blocks:
+                            if not disable_silence_cutoff and total_blocks >= max_initial_silence_blocks:
                                 logger.info("[VAD] Initial silence timeout reached (3.0s). Exiting recording loop.")
                                 break
 
                     if total_blocks >= max_total_blocks:
                         logger.info("Maximum recording duration reached. Stopping recording.")
                         break
+
+            if disable_silence_cutoff:
+                has_spoken = True
 
             if (stop_event is not None and stop_event.is_set()) or not recorded_chunks or not has_spoken:
                 logger.info("[VAD] Recording exited without valid speech content detected (has_spoken=%s).", has_spoken)
@@ -252,14 +273,19 @@ class AudioRecorder:
         temp_dir = Path(tempfile.gettempdir())
         file_path = temp_dir / "nova_mock_audio.wav"
         
-        # 1.5 seconds of silence
-        silence = np.zeros(int(self.samplerate * 1.5), dtype=np.int16)
+        # 1.5 seconds of silence (16-bit PCM, 2 bytes per sample)
+        num_samples = int(self.samplerate * 1.5)
         
         with wave.open(str(file_path), "wb") as wf:
             wf.setnchannels(self.channels)
             wf.setsampwidth(2)
             wf.setframerate(self.samplerate)
-            wf.writeframes(silence.tobytes())
+            if NUMPY_AVAILABLE and np is not None:
+                silence = np.zeros(num_samples, dtype=np.int16)
+                wf.writeframes(silence.tobytes())
+            else:
+                silence_bytes = bytes(num_samples * 2)
+                wf.writeframes(silence_bytes)
             
         logger.debug("Created mock silent audio file at %s", file_path)
         return file_path

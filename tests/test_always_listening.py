@@ -50,8 +50,9 @@ class TestAlwaysListeningEngine:
     def test_wake_word_match_transitions_state(
         self, mock_unlink, mock_exists, mock_voice_manager, mock_wake_detector, mock_audio_recorder
     ):
-        # Set wake detector to match
+        # Set wake detector to match and return empty transcribe to stay in LISTENING state
         mock_wake_detector.detect.return_value = True
+        mock_voice_manager._safe_transcribe.return_value = ""
         
         on_wake = MagicMock()
         engine = AlwaysListeningEngine(

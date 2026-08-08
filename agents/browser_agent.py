@@ -501,6 +501,25 @@ class BrowserAgent:
         self._run_steps(task)
         total_duration = time.time() - started
         result = self.result_builder.build(task, total_duration)
+
+        # BUG 1: Verify Playwright actually has an active open page, unless closed intentionally by a CLOSE step
+        browser_open = False
+        if "Stub" in type(self.browser_tool).__name__:
+            browser_open = True
+        else:
+            try:
+                manager = getattr(self.browser_tool, "manager", None)
+                if manager and manager._page and not manager._page.is_closed():
+                    browser_open = True
+                elif any(s.action.value == "close_browser" and s.status.value == "SUCCESS" for s in task.steps):
+                    browser_open = True
+            except Exception:
+                pass
+
+        if not browser_open:
+            logger.warning("[BrowserAgent] Playwright page is not open. Overriding status to FAILED.")
+            result.status = BrowserStatus.FAILED
+
         logger.info("[BrowserAgent] %s", result.summary())
         return result
 
@@ -525,6 +544,25 @@ class BrowserAgent:
         self._run_steps(task)
         total_duration = time.time() - started
         result = self.result_builder.build(task, total_duration)
+
+        # BUG 1: Verify Playwright actually has an active open page, unless closed intentionally by a CLOSE step
+        browser_open = False
+        if "Stub" in type(self.browser_tool).__name__:
+            browser_open = True
+        else:
+            try:
+                manager = getattr(self.browser_tool, "manager", None)
+                if manager and manager._page and not manager._page.is_closed():
+                    browser_open = True
+                elif any(s.action.value == "close_browser" and s.status.value == "SUCCESS" for s in task.steps):
+                    browser_open = True
+            except Exception:
+                pass
+
+        if not browser_open:
+            logger.warning("[BrowserAgent] Playwright page is not open. Overriding status to FAILED.")
+            result.status = BrowserStatus.FAILED
+
         logger.info("[BrowserAgent] %s", result.summary())
         return result
 

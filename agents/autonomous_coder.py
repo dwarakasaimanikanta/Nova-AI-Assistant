@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -40,6 +41,7 @@ class CoderExecutionReport:
     stderr: str = ""
     preview_url: Optional[str] = None
     duration: float = 0.0
+    files_created: List[str] = field(default_factory=list)
 
     def summary(self) -> str:
         status = "SUCCESS" if self.success else "FAILED"
@@ -80,8 +82,6 @@ class AutonomousCoder:
         5. Trigger BrowserAgent for local preview verification on success.
         """
         started = time.time()
-        task_id = str(uuid.uuid4())[:8] if "uuid" in sys.modules or True else "coder_task"
-        import uuid
         task_id = str(uuid.uuid4())[:8]
 
         logger.info("[AutonomousCoder] Commencing workflow for request: %r", request)
@@ -93,12 +93,32 @@ class AutonomousCoder:
             return CoderExecutionReport(
                 task_id=task_id, success=False, project_type=coding_res.project_type.value,
                 root_dir=str(coding_res.root_dir), retries_attempted=0,
-                errors=coding_res.errors, duration=duration
+                errors=coding_res.errors, duration=duration, files_created=[]
             )
 
         root_dir = coding_res.root_dir
         project_type = coding_res.project_type
         logger.info("[AutonomousCoder] Scaffolding complete for type '%s' at '%s'.", project_type, root_dir)
+
+        # BUG 4: Check for runnable entry file for Python/Flask projects
+        if project_type in (ProjectType.PYTHON, ProjectType.FLASK):
+            candidates = ["app.py", "main.py", "server.py", "run.py"]
+            if root_dir.exists():
+                entry_found = any((root_dir / cand).exists() for cand in candidates)
+                if not entry_found:
+                    duration = time.time() - started
+                    err_msg = "No runnable entry file (app.py, main.py, server.py, run.py) found in project root."
+                    logger.error("[AutonomousCoder] %s", err_msg)
+                    return CoderExecutionReport(
+                        task_id=task_id,
+                        success=False,
+                        project_type=project_type.value,
+                        root_dir=str(root_dir),
+                        retries_attempted=0,
+                        errors=[err_msg],
+                        duration=duration,
+                        files_created=[str(f.path) for f in coding_res.generated_files]
+                    )
 
         # ── 2. Run & Self-Healing Loop ─────────────────────────────────────
         retries = 0
@@ -186,7 +206,8 @@ class AutonomousCoder:
             stdout=last_stdout,
             stderr=last_stderr,
             preview_url=preview_url,
-            duration=duration
+            duration=duration,
+            files_created=[str(f.path) for f in coding_res.generated_files]
         )
         logger.info("[AutonomousCoder] %s", report.summary())
         return report
@@ -197,16 +218,24 @@ class AutonomousCoder:
         """Launch the project and determine its target preview url."""
         try:
             if proj_type in (ProjectType.PYTHON, ProjectType.FLASK):
-                entry = root / "app.py" if (root / "app.py").exists() else root / "main.py"
+                candidates = ["app.py", "main.py", "server.py", "run.py"]
+                entry_found = None
+                for cand in candidates:
+                    if (root / cand).exists():
+                        entry_found = root / cand
+                        break
+                if not entry_found:
+                    entry_found = root / "main.py"  # fallback
+
                 proc = subprocess.Popen(
-                    [sys.executable, str(entry)],
+                    [sys.executable, str(entry_found)],
                     cwd=str(root),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True
                 )
                 port = "5000" if proj_type == ProjectType.FLASK else None
-                url = f"http://localhost:{port}" if port else None
+                url = f"http://localhost:{port}" if port else f"file:///{entry_found.resolve()}"
                 return proc, url, None
 
             elif proj_type == ProjectType.FASTAPI:

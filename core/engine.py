@@ -236,6 +236,20 @@ class NovaEngine:
             The text response or a generator yielding chunks.
             """
         original_input = user_input.strip()
+        
+        # ── PART 1: Smart Command Normalizer ────────────────────────────────
+        normalized = original_input
+        import re
+        normalized = re.sub(r"\b(vscore|vs\s+code|visual\s+studio)\b", "VS Code", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\b(youtube|you\s+tube|u\s+tube)\b", "YouTube", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\b(chrome\s+browser|google\s+chrome)\b", "Chrome", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\b(git\s+hub)\b", "GitHub", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\b(chat\s+gpt)\b", "ChatGPT", normalized, flags=re.IGNORECASE)
+        
+        if normalized != original_input:
+            logger.info("[NORMALIZER] Normalized user input: %r -> %r", original_input, normalized)
+            original_input = normalized
+
         logger.info("Processing user input: '%s' (stream=%s)", original_input, stream)
 
         # Apply contact name correction layer

@@ -44,6 +44,7 @@ class BootManager:
         self.config_service: Optional[Any] = None
         self.agent_registry: Optional[Any] = None
         self.memory_agent: Optional[Any] = None
+        self.short_term: Optional[Any] = None
         self.session_manager: Optional[Any] = None
         self.voice_manager: Optional[Any] = None
         self.always_listening: Optional[Any] = None
@@ -102,7 +103,9 @@ class BootManager:
             # 4. Initialize Core Engine & ExecutiveAgent
             from core.engine import NovaEngine
             from core.executive_agent import ExecutiveAgent
-            engine = NovaEngine()
+            from memory.short_term import ShortTermMemory
+            self.short_term = ShortTermMemory()
+            engine = NovaEngine(memory=self.short_term)
             self.executive_agent = ExecutiveAgent(engine=engine, agent_registry=self.agent_registry)
             self.agent_registry.set_engine(engine)
             initialized_components.append("ExecutiveAgent")
@@ -126,9 +129,24 @@ class BootManager:
             if self.memory_agent:
                 self.memory_agent.remember("short_term", "last_session_id", session_id)
 
-            # 7. Initialize VoiceManager
+            # 7. Initialize VoiceManager with config values
             from voice.voice_manager import VoiceManager
-            self.voice_manager = VoiceManager(engine=engine)
+            from config import VOICE_INPUT_ENABLED, WAKE_WORD_ENABLED
+            self.voice_manager = VoiceManager(
+                engine=engine,
+                wake_word_enabled=WAKE_WORD_ENABLED,
+                voice_input_enabled=VOICE_INPUT_ENABLED,
+            )
+            
+            # Associate with the loaded voice plugin if present
+            voice_plugin = None
+            for p in getattr(engine, "plugins", []):
+                if getattr(p, "name", "") == "voice":
+                    voice_plugin = p
+                    break
+            if voice_plugin:
+                voice_plugin.voice_manager = self.voice_manager
+                
             self.session_manager.voice_manager = self.voice_manager
             initialized_components.append("VoiceManager")
 
@@ -137,7 +155,8 @@ class BootManager:
             self.always_listening = AlwaysListeningEngine(
                 voice_manager=self.voice_manager,
                 wake_detector=self.voice_manager.wake_detector,
-                audio_recorder=self.voice_manager.recorder
+                audio_recorder=self.voice_manager.recorder,
+                on_wake_callback=lambda: self.voice_manager._safe_speak("Yes Boss.")
             )
             initialized_components.append("AlwaysListeningEngine")
 
@@ -148,6 +167,13 @@ class BootManager:
                 voice_manager=self.voice_manager,
                 memory_agent=self.memory_agent
             )
+            
+            def handle_wake():
+                if self.conversation_engine:
+                    self.conversation_engine.interrupt()
+                self.voice_manager._safe_speak("Yes Boss.")
+                
+            self.always_listening.on_wake_callback = handle_wake
             self.always_listening.on_command_callback = self.conversation_engine.process_speech
             initialized_components.append("ConversationEngine")
 
@@ -163,6 +189,7 @@ class BootManager:
                 planner_agent=planner_agent,
                 memory_agent=self.memory_agent
             )
+            self.executive_agent.execution_pipeline = self.execution_pipeline
             initialized_components.append("ExecutionPipeline")
 
             # Resolve optional agents and log status
@@ -191,33 +218,23 @@ class BootManager:
                 errors=errors
             )
 
-        # 11. Generate startup greeting prefix based on time of day
-        hour = datetime.datetime.now().hour
-        greeting_time = "Good morning"
-        if 12 <= hour < 17:
-            greeting_time = "Good afternoon"
-        elif 17 <= hour < 22:
-            greeting_time = "Good evening"
-        elif hour >= 22 or hour < 5:
-            greeting_time = "Good night"
+        # 11. Generate startup greeting
+        greeting = "Hello Boss.\nAll core systems are online.\nI'm ready."
 
-        greeting = f"{greeting_time} Boss.\nAll core systems are online.\nI'm ready."
-
-        # Speak greeting if voice outputs are supported
+        # Speak greeting if voice is enabled
         if self.voice_manager and getattr(self.voice_manager, "voice_input_enabled", False):
             try:
-                if hasattr(self.voice_manager, "tts") and hasattr(self.voice_manager.tts, "execute"):
-                    self.voice_manager.tts.execute(text=greeting)
+                self.voice_manager._safe_speak(greeting)
+                logger.info("[BootManager] Startup greeting spoken.")
             except Exception as tts_err:
                 logger.debug("Failed speaking startup greeting: %s", tts_err)
 
-        # 12. Switch to Always Listening mode
+        # 12. Start Always Listening mode (Jarvis-style continuous wake-word)
         if self.voice_manager:
             self.voice_manager.wake_word_enabled = True
-            self.voice_manager.state = "WAITING"
-            if getattr(self.voice_manager, "voice_input_enabled", False):
-                self.always_listening.start()
-                logger.info("[BootManager] Always Listening background thread started.")
+            self.voice_manager.state = "WAKING"
+            self.always_listening.start()
+            logger.info("[BootManager] Always Listening background thread started.")
 
         self.initialized = True
         duration = time.time() - started

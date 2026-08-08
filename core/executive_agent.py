@@ -761,8 +761,9 @@ class ExecutiveAgent:
         is_planning = False
         goal_keywords = (
             "plan to", "goal:", "solve goal", "steps to solve",
-            "complex plan", "first do", "composite task", "create portfolio website",
-            "website", "app"
+            "complex plan", "first do", "composite task", "build website",
+            "build web application", "generate project", "generate application",
+            "create software", "develop application", "create portfolio website"
         )
         if any(kw in lower for kw in goal_keywords) or "\n" in lower or task_type == TaskType.PLANNING:
             is_planning = True

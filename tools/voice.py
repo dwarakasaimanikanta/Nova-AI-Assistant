@@ -59,6 +59,11 @@ class VoiceTool(BaseTool):
         AudioRecorder.playback_active.set()
 
         stop_event = kwargs.get("stop_event", None)
+        if stop_event is None:
+            stop_event = getattr(self, "stop_event", None)
+            
+        if stop_event is not None:
+            stop_event.clear()
 
         try:
             if os_platform == "Windows":

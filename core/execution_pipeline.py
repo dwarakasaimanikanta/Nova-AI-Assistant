@@ -44,6 +44,7 @@ class ExecutionPipeline:
         invokes planners if required, and records task statistics in MemoryAgent.
         """
         with self._lock:
+            logger.info("ExecutionPipeline executing")
             logger.info("[ExecutionPipeline] Processing request: %r", request_text)
             self._notify_progress("Analyzing user request...")
 

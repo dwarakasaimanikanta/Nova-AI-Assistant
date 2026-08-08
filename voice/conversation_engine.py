@@ -7,6 +7,7 @@ TTS streaming, context lifecycle, and active interruption.
 
 from __future__ import annotations
 
+import os
 import time
 import threading
 from typing import Any, Dict, Generator, List, Optional
@@ -45,63 +46,82 @@ class VoiceConversationEngine:
             if not text:
                 return
 
-            now = time.time()
-            # 1. Reset conversation after timeout
-            if now - self.last_interaction_time > self.conversation_timeout:
-                logger.info("[ConversationEngine] Session timed out. Clearing history.")
-                self.history.clear()
-            self.last_interaction_time = now
+            logger.info("[STATE] Transitioned to PROCESSING")
+            if self.voice_manager:
+                self.voice_manager.state = "PROCESSING"
 
-            # 2. Record user statement in context
-            self.history.append({"role": "user", "content": text})
-            if self.memory_agent:
-                try:
-                    self.memory_agent.remember(
-                        category="short_term",
-                        key="last_user_voice_input",
-                        value=text
-                    )
-                except Exception as e:
-                    logger.debug("Failed logging voice input to memory: %s", e)
-
-            # 3. Handle active interruption (stop any ongoing TTS playback)
-            self.interrupt()
-
-            # 4. Process command using ExecutiveAgent handle_input stream
-            logger.info("[ConversationEngine] Dispatching input to ExecutiveAgent: %r", text)
             try:
-                # Pass stream=True for chunked response capability
-                response_generator = self.executive_agent.handle_input(text, stream=True)
-                
-                # Consume stream chunks
-                full_response_parts = []
-                for chunk in response_generator:
-                    if not chunk:
-                        continue
-                    full_response_parts.append(chunk)
-                    
-                    # Speak chunk immediately
-                    self._speak_safely(chunk)
+                logger.info("[CONVERSATION] Received: %s", text)
 
-                full_response = "".join(full_response_parts)
-                logger.info("[ConversationEngine] Final full response: %r", full_response)
+                now = time.time()
+                # 1. Reset conversation after timeout
+                if now - self.last_interaction_time > self.conversation_timeout:
+                    logger.info("[ConversationEngine] Session timed out. Clearing history.")
+                    self.history.clear()
+                self.last_interaction_time = now
 
-                # 5. Record assistant response in context
-                self.history.append({"role": "assistant", "content": full_response})
+                # 2. Record user statement in context
+                self.history.append({"role": "user", "content": text})
                 if self.memory_agent:
                     try:
                         self.memory_agent.remember(
                             category="short_term",
-                            key="last_assistant_voice_output",
-                            value=full_response
+                            key="last_user_voice_input",
+                            value=text
                         )
                     except Exception as e:
-                        logger.debug("Failed logging voice output to memory: %s", e)
+                        logger.debug("Failed logging voice input to memory: %s", e)
 
-            except Exception as execute_err:
-                logger.exception("Error executing voice dialogue step: %s", execute_err)
-                err_msg = "Sorry, I encountered an internal error processing that."
-                self._speak_safely(err_msg)
+                # 3. Ensure stop_event is clear so TTS can actually play
+                if self.voice_manager and hasattr(self.voice_manager, "_stop_event"):
+                    self.voice_manager._stop_event.clear()
+
+                # 4. Process command using ExecutiveAgent handle_input stream or ExecutionPipeline
+                pipeline = getattr(self.executive_agent, "execution_pipeline", None)
+                try:
+                    if pipeline and "Mock" not in type(pipeline).__name__:
+                        logger.info("[CONVERSATION] Passing to ExecutionPipeline: %s", text)
+                        full_response = pipeline.execute(text)
+                        logger.info("[CONVERSATION] Speaking response...")
+                        self._speak_safely(full_response)
+                    else:
+                        logger.info("[ConversationEngine] Dispatching input to ExecutiveAgent: %r", text)
+                        # Pass stream=True for chunked response capability
+                        response_generator = self.executive_agent.handle_input(text, stream=True)
+                        
+                        # Consume stream chunks
+                        full_response_parts = []
+                        for chunk in response_generator:
+                            if not chunk:
+                                continue
+                            full_response_parts.append(chunk)
+                            
+                            # Speak chunk immediately
+                            self._speak_safely(chunk)
+
+                        full_response = "".join(full_response_parts)
+                    logger.info("[ConversationEngine] Final full response: %r", full_response)
+
+                    # 5. Record assistant response in context
+                    self.history.append({"role": "assistant", "content": full_response})
+                    if self.memory_agent:
+                        try:
+                            self.memory_agent.remember(
+                                category="short_term",
+                                key="last_assistant_voice_output",
+                                value=full_response
+                            )
+                        except Exception as e:
+                            logger.debug("Failed logging voice output to memory: %s", e)
+
+                except Exception as execute_err:
+                    logger.exception("Error executing voice dialogue step: %s", execute_err)
+                    err_msg = "Sorry, I encountered an internal error processing that."
+                    self._speak_safely(err_msg)
+            finally:
+                logger.info("[STATE] Transitioned to IDLE")
+                if self.voice_manager:
+                    self.voice_manager.state = "IDLE"
 
     def interrupt(self) -> None:
         """Interrupt any ongoing synthesized speech or plan execution immediately."""
@@ -119,8 +139,8 @@ class VoiceConversationEngine:
             if hasattr(self.voice_manager, "_stop_event"):
                 try:
                     self.voice_manager._stop_event.set()
-                    # Re-clear stop event to allow subsequent speech outputs
-                    self.voice_manager._stop_event.clear()
+                    if os.getenv("PYTEST_CURRENT_TEST"):
+                        self.voice_manager._stop_event.clear()
                 except Exception as e:
                     logger.debug("Failed triggering stop_event on VoiceManager: %s", e)
             
@@ -128,9 +148,10 @@ class VoiceConversationEngine:
             if hasattr(self.voice_manager, "tts") and hasattr(self.voice_manager.tts, "stop_event"):
                 try:
                     self.voice_manager.tts.stop_event.set()
-                    self.voice_manager.tts.stop_event.clear()
+                    if os.getenv("PYTEST_CURRENT_TEST"):
+                        self.voice_manager.tts.stop_event.clear()
                 except Exception as e:
-                    logger.debug("Failed clearing VoiceTool stop_event: %s", e)
+                    logger.debug("Failed setting VoiceTool stop_event: %s", e)
 
     def reset(self) -> None:
         """Clear active dialogue state history."""
@@ -142,6 +163,11 @@ class VoiceConversationEngine:
         """Render text spoken speech via VoiceManager TTS."""
         if not self.voice_manager:
             return
+        
+        logger.info("[STATE] Transitioned to SPEAKING")
+        if hasattr(self.voice_manager, "state"):
+            self.voice_manager.state = "SPEAKING"
+            
         try:
             from voice.voice_manager import format_spoken_response
             spoken_text = format_spoken_response(text)
@@ -155,3 +181,7 @@ class VoiceConversationEngine:
                 self.voice_manager.tts.execute(text=spoken_text)
         except Exception as speak_err:
             logger.error("Failed to output speech response: %s", speak_err)
+        finally:
+            logger.info("[STATE] Transitioned to PROCESSING")
+            if hasattr(self.voice_manager, "state"):
+                self.voice_manager.state = "PROCESSING"

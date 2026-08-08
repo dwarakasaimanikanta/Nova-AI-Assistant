@@ -1,22 +1,19 @@
-"""
-tools/browser.py
-----------------
-Consolidated browser automation tool using Python's built-in webbrowser module.
-Conforms to the BaseTool interface.
-"""
-
-from typing import Any
+from typing import Any, Optional
 import urllib.parse
-import webbrowser
 
 from tools.base_tool import BaseTool, RiskLevel
 from utils.logger import get_logger
+from utils.browser_manager import BrowserManager
 
 logger = get_logger(__name__)
 
 
 class BrowserTool(BaseTool):
-    """Consolidated browser tool handling website opens and web searches."""
+    """Consolidated browser tool handling website opens and web searches using Playwright."""
+
+    def __init__(self, manager: Optional[BrowserManager] = None) -> None:
+        # Share or instantiate the Playwright BrowserManager
+        self.manager = manager or BrowserManager()
 
     @property
     def name(self) -> str:
@@ -61,7 +58,6 @@ class BrowserTool(BaseTool):
 
     @property
     def risk_level(self) -> RiskLevel:
-        # Opening web pages is classified as LOW risk, running automatically
         return RiskLevel.LOW
 
     def execute(self, **kwargs: Any) -> str:
@@ -69,49 +65,44 @@ class BrowserTool(BaseTool):
         if not action:
             return "Failure: No action provided."
 
+        logger.info("[BROWSER] Routing browser tool action: '%s'", action)
+
         try:
             if action == "open_google":
-                url = "https://www.google.com"
-                webbrowser.open(url)
-                return "Success: Opened Google in your default web browser."
+                res = self.manager.open_url("https://www.google.com")
+                return f"Success: Opened Google. {res}"
 
             elif action == "open_youtube":
-                url = "https://www.youtube.com"
-                webbrowser.open(url)
-                return "Success: Opened YouTube in your default web browser."
+                res = self.manager.open_url("https://www.youtube.com")
+                return f"Success: Opened YouTube. {res}"
 
             elif action == "open_github":
-                url = "https://www.github.com"
-                webbrowser.open(url)
-                return "Success: Opened GitHub in your default web browser."
+                res = self.manager.open_url("https://github.com")
+                return f"Success: Opened GitHub. {res}"
 
             elif action == "open_chatgpt":
-                url = "https://chatgpt.com"
-                webbrowser.open(url)
-                return "Success: Opened ChatGPT in your default web browser."
+                res = self.manager.open_url("https://chatgpt.com")
+                return f"Success: Opened ChatGPT. {res}"
 
             elif action == "open_url":
                 url = kwargs.get("url")
                 if not url:
                     return "Failure: Missing parameter 'url'."
                 
-                # Sanity check: Prepend https:// if protocol is missing
                 parsed = urllib.parse.urlparse(url)
                 if not parsed.scheme:
                     url = "https://" + url
                 
-                webbrowser.open(url)
-                return f"Success: Opened URL '{url}' in your default web browser."
+                res = self.manager.open_url(url)
+                return f"Success: Opened URL '{url}'. {res}"
 
             elif action == "google_search":
                 query = kwargs.get("query")
                 if not query:
                     return "Failure: Missing parameter 'query'."
                 
-                encoded_query = urllib.parse.quote_plus(query)
-                url = f"https://www.google.com/search?q={encoded_query}"
-                webbrowser.open(url)
-                return f"Success: Performed Google search for '{query}' in your default web browser."
+                res = self.manager.search_google(query)
+                return f"Success: Performed Google search for '{query}'. {res}"
 
             elif action == "youtube_search":
                 query = kwargs.get("query")
@@ -120,8 +111,8 @@ class BrowserTool(BaseTool):
                 
                 encoded_query = urllib.parse.quote_plus(query)
                 url = f"https://www.youtube.com/results?search_query={encoded_query}"
-                webbrowser.open(url)
-                return f"Success: Performed YouTube search for '{query}' in your default web browser."
+                res = self.manager.open_url(url)
+                return f"Success: Performed YouTube search for '{query}'. {res}"
 
             else:
                 return f"Failure: Unsupported action '{action}'."
@@ -129,3 +120,10 @@ class BrowserTool(BaseTool):
         except Exception as e:
             logger.exception("Error in BrowserTool execution for action '%s': %s", action, e)
             return f"Failure executing browser action '{action}': {e}"
+
+    def shutdown(self) -> None:
+        """Close browser resources on shutdown."""
+        try:
+            self.manager.close_browser()
+        except Exception:
+            pass
