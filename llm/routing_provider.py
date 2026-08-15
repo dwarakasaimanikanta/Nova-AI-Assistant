@@ -39,20 +39,31 @@ class RoutingLLMProvider(BaseLLMProvider):
         self.ollama_provider = OllamaProvider(model_name=default_local_model)
         self.local_manager = LocalLLMManager()
 
+    _online_cached = None
+    _online_cache_time = 0.0
+
     def _is_online(self) -> bool:
-        """Quick HTTP check to determine network reachability."""
+        """Quick HTTP check to determine network reachability with caching."""
+        import time
+        now = time.time()
+        if RoutingLLMProvider._online_cached is not None and (now - RoutingLLMProvider._online_cache_time) < 10.0:
+            return RoutingLLMProvider._online_cached
+
         try:
-            # Short 1.5s timeout check against google.com to test if internet is alive
-            urllib.request.urlopen("https://www.google.com", timeout=1.5)
-            return True
+            # Short 0.8s timeout check against google.com to test if internet is alive
+            urllib.request.urlopen("https://www.google.com", timeout=0.8)
+            RoutingLLMProvider._online_cached = True
         except Exception:
-            return False
+            RoutingLLMProvider._online_cached = False
+        RoutingLLMProvider._online_cache_time = now
+        return RoutingLLMProvider._online_cached
 
     def generate(
         self,
         messages: list[dict[str, Any]],
         stream: bool = False,
         tools: list[Any] | None = None,
+        system_instruction: str | None = None,
     ) -> LLMResponse | Generator[str, None, None]:
         """
         Execute generation by routing calls to the appropriate provider backend.
@@ -61,6 +72,7 @@ class RoutingLLMProvider(BaseLLMProvider):
             messages: Conversation thread message history.
             stream: True to stream responses.
             tools: Bindable tool lists.
+            system_instruction: Optional system instruction prompt override.
 
         Returns:
             LLMResponse or a chunk generator.
@@ -75,13 +87,13 @@ class RoutingLLMProvider(BaseLLMProvider):
             logger.info("Routing: Forced local Ollama route detected.")
             if forced_model:
                 self.ollama_provider.model_name = forced_model
-            return self.ollama_provider.generate(messages, stream, tools)
+            return self.ollama_provider.generate(messages, stream, tools, system_instruction)
             
         elif forced_provider == "gemini":
             logger.info("Routing: Forced Gemini route detected.")
             if not self.gemini_provider:
                 raise ValueError("Gemini is forced but GEMINI_API_KEY is not configured.")
-            return self.gemini_provider.generate(messages, stream, tools)
+            return self.gemini_provider.generate(messages, stream, tools, system_instruction)
 
         # 2. Automatic Routing Logic
         online = self._is_online()
@@ -90,7 +102,7 @@ class RoutingLLMProvider(BaseLLMProvider):
         if self.gemini_provider and online:
             try:
                 logger.info("Routing: Online Gemini provider is available. Routing query.")
-                return self.gemini_provider.generate(messages, stream, tools)
+                return self.gemini_provider.generate(messages, stream, tools, system_instruction)
             except (ConnectionError, TimeoutError, OSError) as e:
                 # Genuine network / connectivity failure → safe to fall back to Ollama
                 logger.warning("Routing: Gemini network error: %s. Falling back to local Ollama.", e)
@@ -125,7 +137,7 @@ class RoutingLLMProvider(BaseLLMProvider):
                     logger.warning("Routing: Target model '%s' not found locally. Autoreconfig to '%s'.", target, local_models[0])
                     self.ollama_provider.model_name = local_models[0]
                     
-            return self.ollama_provider.generate(messages, stream, tools)
+            return self.ollama_provider.generate(messages, stream, tools, system_instruction)
 
         # No pathways available — report the real cause
         if gemini_error:

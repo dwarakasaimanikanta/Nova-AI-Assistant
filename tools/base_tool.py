@@ -58,7 +58,7 @@ class BaseTool(ABC):
         return RiskLevel.LOW
 
     @abstractmethod
-    def execute(self, **kwargs: Any) -> str:
+    def execute(self, **kwargs: Any) -> Any:
         """
         Execute the tool action with parameters passed as keyword args.
 
@@ -66,6 +66,7 @@ class BaseTool(ABC):
             **kwargs: Arbitrary parameter arguments parsed by the planner.
 
         Returns:
-            The string result of the tool invocation.
+            The string or ActionResult result of the tool invocation.
         """
         pass
+

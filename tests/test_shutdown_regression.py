@@ -21,7 +21,8 @@ from tools.voice import VoiceTool
 from tools.android_tool import AndroidTool
 
 
-def test_ctrl_c_during_recording():
+@patch("sounddevice.InputStream")
+def test_ctrl_c_during_recording(mock_input_stream):
     """Verify that recording aborts immediately when stop_event is set (Ctrl+C emulation)."""
     recorder = AudioRecorder()
     stop_event = threading.Event()
@@ -80,27 +81,36 @@ def test_ctrl_c_during_tts():
     tts = VoiceTool()
     stop_event = threading.Event()
     
-    # We patch Popen to monitor termination/kill
-    with patch("subprocess.Popen") as mock_popen:
-        mock_proc = MagicMock()
-        # Simulate process running
-        mock_proc.poll.side_effect = [None] * 50 + [0]
-        mock_popen.return_value = mock_proc
-        
-        # Trigger stop event in background after 50ms
-        def trigger_stop():
-            time.sleep(0.05)
-            stop_event.set()
-        
-        threading.Thread(target=trigger_stop, daemon=True).start()
-        
-        start_time = time.time()
-        res = tts.execute(text="Testing shutdown logic.", stop_event=stop_event)
-        duration = time.time() - start_time
-        
-        assert duration < 2.0
-        # Should call terminate/kill on the process when stop_event is set
-        mock_proc.terminate.assert_called_once()
+    with patch("tools.voice.platform.system", return_value="Linux"):
+        with patch("shutil.which", return_value="aplay"):
+            with patch.object(VoiceTool, "_generate_audio_sync") as mock_gen:
+                # Create a dummy file to satisfy existence/size check
+                def side_effect(text, voice, path):
+                    with open(path, "w") as f:
+                        f.write("dummy")
+                mock_gen.side_effect = side_effect
+
+                # We patch Popen to monitor termination/kill
+                with patch("subprocess.Popen") as mock_popen:
+                    mock_proc = MagicMock()
+                    # Simulate process running
+                    mock_proc.poll.side_effect = [None] * 50 + [0]
+                    mock_popen.return_value = mock_proc
+                    
+                    # Trigger stop event in background after 50ms
+                    def trigger_stop():
+                        time.sleep(0.05)
+                        stop_event.set()
+                    
+                    threading.Thread(target=trigger_stop, daemon=True).start()
+                    
+                    start_time = time.time()
+                    res = tts.execute(text="Testing shutdown logic.", stop_event=stop_event)
+                    duration = time.time() - start_time
+                    
+                    assert duration < 2.0
+                    # Should call terminate/kill on the process when stop_event is set
+                    mock_proc.terminate.assert_called_once()
 
 
 def test_android_tool_timeout_and_no_hang():
@@ -117,3 +127,68 @@ def test_android_tool_timeout_and_no_hang():
         
         assert duration < 2.0
         assert "timed out" in res.lower() or "failure" in res.lower()
+
+
+def test_always_listening_shutdown_teardown():
+    """Verify that AlwaysListeningEngine shutdown stops and joins the background thread successfully."""
+    from voice.always_listening import AlwaysListeningEngine
+    
+    mock_vm = MagicMock()
+    mock_wd = MagicMock()
+    mock_rec = MagicMock()
+    
+    # We want it to loop at least once
+    mock_rec.record_command.return_value = None
+    
+    engine = AlwaysListeningEngine(
+        voice_manager=mock_vm,
+        wake_detector=mock_wd,
+        audio_recorder=mock_rec,
+        conversation_timeout=1.0
+    )
+    
+    engine.start()
+    assert engine.running is True
+    assert engine._thread is not None
+    assert engine._thread.is_alive()
+    
+    active_thread_names = [t.name for t in threading.enumerate()]
+    assert "AlwaysListeningThread" in active_thread_names
+    
+    engine.stop()
+    
+    assert engine.running is False
+    assert engine._thread is None
+    
+    active_thread_names = [t.name for t in threading.enumerate()]
+    assert "AlwaysListeningThread" not in active_thread_names
+
+
+def test_wake_word_detect_honors_stop_event():
+    """Verify that WakeWordDetector.detect() immediately exits and does not log when stop_event is set."""
+    from voice.wake_word import WakeWordDetector
+    import logging
+    
+    stt = MagicMock()
+    detector = WakeWordDetector(stt_engine=stt)
+    
+    stop_event = threading.Event()
+    stop_event.set()
+    
+    logger = logging.getLogger("voice.wake_word")
+    log_spy = MagicMock()
+    
+    class SpyHandler(logging.Handler):
+        def emit(self, record):
+            log_spy(record.getMessage())
+            
+    handler = SpyHandler()
+    logger.addHandler(handler)
+    
+    try:
+        res = detector.detect(Path("dummy.wav"), stop_event=stop_event)
+        assert res is False
+        assert stt.transcribe.call_count == 0
+        assert log_spy.call_count == 0
+    finally:
+        logger.removeHandler(handler)

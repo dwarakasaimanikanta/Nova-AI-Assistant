@@ -91,7 +91,12 @@ class GitAgent:
         elif "checkout" in lower or "switch branch" in lower:
             branch = "main"
             words = request.split()
-            if len(words) >= 3:
+            # Find the word immediately following 'checkout' if present, or fallback to the last word
+            if "checkout" in words:
+                idx = words.index("checkout")
+                if idx + 1 < len(words):
+                    branch = words[idx + 1].strip("'\"")
+            elif len(words) >= 2:
                 branch = words[-1].strip("'\"")
             cmd = ["git", "checkout", branch]
             action = "checkout"

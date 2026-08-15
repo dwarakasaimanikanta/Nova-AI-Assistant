@@ -22,7 +22,11 @@ logger = get_logger(__name__)
 class BrowserManager:
     """Controls Chrome/Edge browser sessions over Playwright async API with a dedicated event loop."""
 
+    _instance = None
+
     def __init__(self) -> None:
+        if BrowserManager._instance is None:
+            BrowserManager._instance = self
         self._playwright = None
         self._browser = None
         self._context = None
@@ -98,6 +102,18 @@ class BrowserManager:
         """Uploads files to inputs matching selector."""
         return self._run(self._async_upload_file(selector, file_paths))
 
+    def current_url(self) -> str:
+        """Returns the current page URL."""
+        return self._run(self._async_current_url())
+
+    async def _async_current_url(self) -> str:
+        if self._page and not self._page.is_closed():
+            try:
+                return self._page.url
+            except Exception:
+                pass
+        return ""
+
     def press_key(self, key_name: str) -> str:
         """Simulates pressing a keyboard key."""
         return self._run(self._async_press_key(key_name))
@@ -122,13 +138,28 @@ class BrowserManager:
         """Terminates context page and stops Playwright."""
         return self._run(self._async_close_browser())
 
+    def current_url(self) -> str:
+        """Returns the current page URL."""
+        return self._run(self._async_current_url())
+
     # ------------------------------------------------------------------
     # Async implementation
     # ------------------------------------------------------------------
+    async def _async_current_url(self) -> str:
+        if not self._page or self._page.is_closed():
+            return ""
+        try:
+            return self._page.url
+        except Exception:
+            return ""
 
     async def _async_launch_browser(self, browser_type: str, headless: bool) -> str:
         # Phase 20: Force headless=False to always run a visible browser
         headless = False
+        
+        if self._page and not self._page.is_closed():
+            logger.info("[BROWSER] Browser is already active. Reusing existing session.")
+            return "Success: Reusing active browser session."
         
         attempts = 2
         for attempt in range(attempts):

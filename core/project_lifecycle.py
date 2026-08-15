@@ -93,6 +93,8 @@ class ProjectLifecycle:
                 self.memory_agent.remember(category="short_term", key="runtime_status", value=status_str)
                 self.memory_agent.remember(category="short_term", key="browser_url", value=coder_report.preview_url or "N/A")
                 self.memory_agent.remember(category="short_term", key="execution_duration", value=f"{duration:.2f}s")
+                self.memory_agent.remember(category="short_term", key="last_lifecycle_status", value=status_str)
+                self.memory_agent.remember(category="short_term", key="last_project_url", value=coder_report.preview_url or "")
             except Exception as mem_err:
                 logger.debug("Failed logging project lifecycle to MemoryAgent: %s", mem_err)
         report = LifecycleReport(

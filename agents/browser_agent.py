@@ -198,13 +198,71 @@ class BrowserPlanner:
     def plan(self, request: str) -> BrowserTask:
         """Build a BrowserTask from a natural-language string."""
         import re
-        lower = request.lower()
+        lower = request.lower().strip()
         task = BrowserTask(description=request)
 
-        # ── Heuristic routing ─────────────────────────────────────────────
+        # Check for explicit close commands
+        close_keywords = (
+            "close browser", "close the browser", "exit browser", "quit browser",
+            "close youtube", "close whatsapp web", "close google", "close tab",
+            "close window", "close chrome", "close firefox", "close edge",
+        )
+        if any(kw in lower for kw in close_keywords):
+            task.add_step(BrowserAction.CLOSE, "Close browser")
+            return task
 
-        # Always launch browser first
-        task.add_step(BrowserAction.LAUNCH, "Launch browser", headless=True)
+        # Always launch browser first (persistent session — do NOT close after URL open)
+        task.add_step(BrowserAction.LAUNCH, "Launch browser", headless=False)
+
+        # Expanded known-site direct navigation map
+        known_sites = {
+            "youtube": "https://www.youtube.com",
+            "github": "https://github.com",
+            "gmail": "https://mail.google.com",
+            "google mail": "https://mail.google.com",
+            "netflix": "https://www.netflix.com",
+            "chatgpt": "https://chatgpt.com",
+            "facebook": "https://www.facebook.com",
+            "instagram": "https://www.instagram.com",
+            "amazon": "https://www.amazon.in",
+            "twitter": "https://twitter.com",
+            "reddit": "https://www.reddit.com",
+            "spotify": "https://open.spotify.com",
+            "linkedin": "https://www.linkedin.com",
+            "stackoverflow": "https://stackoverflow.com",
+            "stack overflow": "https://stackoverflow.com",
+            "whatsapp": "https://web.whatsapp.com",
+            "google": "https://www.google.com",
+        }
+
+        extracted_url = self._extract_url(request)
+        resolved_url = None
+
+        if extracted_url:
+            resolved_url = extracted_url
+        else:
+            # Match "open <site>" or "go to <site>" where site is in known_sites
+            # Check multi-word site names first (e.g. "stack overflow"), then single words
+            for site, url in sorted(known_sites.items(), key=lambda x: -len(x[0])):
+                if site in lower and any(verb in lower for verb in ("open", "go", "navigate", "visit", "launch")):
+                    resolved_url = url
+                    break
+
+        is_special_action = any(kw in lower for kw in (
+            "screenshot", "capture screen", "take a screenshot",
+            "download", "save file", "fetch file",
+            "search", "google for", "look up",
+            "click", "press button",
+            "type", "input", "write",
+            "extract text", "get text", "read page", "scrape",
+        ))
+
+        if resolved_url and not is_special_action:
+            # PERSISTENT SESSION: open URL and KEEP browser open (no CLOSE step)
+            task.add_step(BrowserAction.OPEN_URL, f"Open {resolved_url}", url=resolved_url)
+            return task
+
+        # ── Heuristic routing ─────────────────────────────────────────────
 
         # 1. Screenshot request
         if any(kw in lower for kw in ("screenshot", "capture screen", "take a screenshot")):
@@ -241,7 +299,13 @@ class BrowserPlanner:
         # 4. Search request
         if any(kw in lower for kw in ("search", "google", "look up", "find online")):
             query = self._extract_query(request)
-            task.add_step(BrowserAction.SEARCH, f"Search Google for '{query}'", query=query)
+            if "youtube" in lower:
+                clean_query = re.sub(r"(?i)\b(?:on|in|for|at)?\s*youtube\b", "", query).strip()
+                import urllib.parse
+                yt_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(clean_query)}"
+                task.add_step(BrowserAction.OPEN_URL, f"Search YouTube for '{clean_query}'", url=yt_url)
+            else:
+                task.add_step(BrowserAction.SEARCH, f"Search Google for '{query}'", query=query)
             task.add_step(BrowserAction.EXTRACT_TEXT, "Extract search results")
             task.add_step(BrowserAction.CLOSE, "Close browser")
             return task
@@ -494,6 +558,14 @@ class BrowserAgent:
         """
         started = time.time()
         task = self.planner.plan(request)
+        
+        # Keep browser open unless user explicitly requests close action
+        lower = request.lower()
+        close_keywords = ("close browser", "close the browser", "exit browser", "quit browser", "close youtube", "close whatsapp web", "close google", "close tab", "close window")
+        if not any(kw in lower for kw in close_keywords):
+            while task.steps and task.steps[-1].action == BrowserAction.CLOSE:
+                task.steps.pop()
+
         logger.info(
             "[BrowserAgent] Task %s: '%s' — %d step(s)",
             task.task_id, task.description[:60], len(task.steps)

@@ -82,3 +82,45 @@ def test_gui_app_voice_callback_binding() -> None:
             
         # Clean up
         app.close()
+
+
+def test_gui_app_graceful_shutdown_idempotent() -> None:
+    """Verify that GUI app graceful shutdown is idempotent and safely cleans up timers, threads, and plugins."""
+    from PyQt6.QtWidgets import QApplication
+    qt_app = QApplication.instance()
+    if not qt_app:
+        qt_app = QApplication(["-platform", "offscreen"])
+
+    mock_engine = MagicMock()
+    mock_voice_manager = MagicMock()
+    mock_always_listening = MagicMock()
+    mock_voice_manager.always_listening = mock_always_listening
+    
+    mock_voice_plugin = MagicMock()
+    mock_voice_plugin.name = "voice"
+    mock_voice_plugin.voice_manager = mock_voice_manager
+    mock_engine.plugins = [mock_voice_plugin]
+
+    with patch("interface.gui.gui_app.NovaGUIApp.init_ui"), \
+         patch("interface.gui.gui_app.NovaGUIApp.show"):
+         
+        from interface.gui.gui_app import NovaGUIApp
+        app = NovaGUIApp(engine=mock_engine)
+        
+        # Verify timers are initialized and active
+        assert app._state_timer is not None
+        
+        # Run shutdown
+        app.shutdown()
+        
+        # Verify components got stopped
+        assert app._closed is True
+        assert not app._state_timer.isActive()
+        mock_always_listening.stop.assert_called_once()
+        mock_voice_manager.stop.assert_called_once()
+        mock_voice_plugin.shutdown.assert_called_once()
+        
+        # Run shutdown a second time to verify idempotency (no errors raised)
+        app.shutdown()
+        # Ensure stop calls were still only called once
+        mock_always_listening.stop.assert_called_once()

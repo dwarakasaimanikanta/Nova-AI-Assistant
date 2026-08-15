@@ -45,6 +45,7 @@ def test_engine_handle_input() -> None:
     memory = ShortTermMemory()
     with patch("core.engine.GEMINI_API_KEY", None):
         engine = NovaEngine(memory=memory)
+        engine.conversation = None
 
         response = engine.handle_input("Hello Nova")
         assert response.startswith("Echo: Hello Nova")

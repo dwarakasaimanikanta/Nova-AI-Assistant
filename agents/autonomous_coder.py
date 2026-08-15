@@ -191,9 +191,12 @@ class AutonomousCoder:
 
         # Cleanup running process after short delay (or keep running for user preview)
         # We keep them running but register exit handlers, or terminate if finishing
-        # To make tests deterministic we terminate them upon exiting workflow:
-        self._shutdown_process(app_proc)
-        self._shutdown_process(http_proc)
+        # To make tests deterministic we terminate them upon exiting workflow under test mode:
+        if os.getenv("ENVIRONMENT") == "test" or os.getenv("PYTEST_CURRENT_TEST"):
+            self._shutdown_process(app_proc)
+            self._shutdown_process(http_proc)
+        else:
+            logger.info("[AutonomousCoder] Keeping processes running for live user preview. App proc: %s, Server proc: %s", app_proc, http_proc)
 
         duration = time.time() - started
         report = CoderExecutionReport(

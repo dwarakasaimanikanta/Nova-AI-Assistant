@@ -37,6 +37,7 @@ class OllamaProvider(BaseLLMProvider):
         messages: list[dict[str, Any]],
         stream: bool = False,
         tools: list[Any] | None = None,
+        system_instruction: str | None = None,
     ) -> LLMResponse | Generator[str, None, None]:
         """
         Generate text response from the local model.
@@ -45,6 +46,7 @@ class OllamaProvider(BaseLLMProvider):
             messages: Thread message history.
             stream: True to return chunk generator.
             tools: Tools to bind (not natively supported by standard Ollama HTTP API without extra setups).
+            system_instruction: Optional system instruction prompt override.
 
         Returns:
             LLMResponse or a chunk generator.
@@ -53,6 +55,11 @@ class OllamaProvider(BaseLLMProvider):
 
         # Format messages for Ollama API
         formatted_messages = []
+        if system_instruction:
+            formatted_messages.append({
+                "role": "system",
+                "content": system_instruction
+            })
         for msg in messages:
             role = "user"
             if hasattr(msg, "role"):
@@ -76,7 +83,9 @@ class OllamaProvider(BaseLLMProvider):
             if parts:
                 text_parts = []
                 for part in parts:
-                    if hasattr(part, "text") and part.text:
+                    if isinstance(part, str):
+                        text_parts.append(part)
+                    elif hasattr(part, "text") and part.text:
                         text_parts.append(part.text)
                     elif isinstance(part, dict) and "text" in part:
                         text_parts.append(part["text"])

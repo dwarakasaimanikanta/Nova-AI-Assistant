@@ -39,8 +39,10 @@ class BootReport:
 
 class BootManager:
     """Single entry point coordinating the real startup pipeline initialization and wiring."""
+    _instance: Optional[BootManager] = None
 
     def __init__(self) -> None:
+        BootManager._instance = self
         self.config_service: Optional[Any] = None
         self.agent_registry: Optional[Any] = None
         self.memory_agent: Optional[Any] = None
@@ -63,11 +65,11 @@ class BootManager:
         skipped_components = []
         errors = []
 
-        logger.info("[BootManager] Starting real startup integration pipeline...")
+        logger.info("[SYSTEM] Starting real startup integration pipeline...")
 
         # Avoid duplicate initialization
         if self.initialized:
-            logger.info("[BootManager] Already initialized. Returning cached boot report.")
+            logger.info("[SYSTEM] Already initialized. Returning cached boot report.")
             duration = time.time() - started
             return BootReport(
                 success=True,
@@ -133,7 +135,7 @@ class BootManager:
             from voice.voice_manager import VoiceManager
             from config import VOICE_INPUT_ENABLED, WAKE_WORD_ENABLED
             self.voice_manager = VoiceManager(
-                engine=engine,
+                engine=self.executive_agent,
                 wake_word_enabled=WAKE_WORD_ENABLED,
                 voice_input_enabled=VOICE_INPUT_ENABLED,
             )
@@ -152,12 +154,15 @@ class BootManager:
 
             # 8. Initialize AlwaysListeningEngine
             from voice.always_listening import AlwaysListeningEngine
+            from config import CONVERSATION_TIMEOUT_SECONDS
             self.always_listening = AlwaysListeningEngine(
                 voice_manager=self.voice_manager,
                 wake_detector=self.voice_manager.wake_detector,
                 audio_recorder=self.voice_manager.recorder,
+                conversation_timeout=CONVERSATION_TIMEOUT_SECONDS,
                 on_wake_callback=lambda: self.voice_manager._safe_speak("Yes Boss.")
             )
+            self.voice_manager.always_listening = self.always_listening
             initialized_components.append("AlwaysListeningEngine")
 
             # 9. Initialize ConversationEngine
@@ -169,8 +174,6 @@ class BootManager:
             )
             
             def handle_wake():
-                if self.conversation_engine:
-                    self.conversation_engine.interrupt()
                 self.voice_manager._safe_speak("Yes Boss.")
                 
             self.always_listening.on_wake_callback = handle_wake
@@ -236,9 +239,25 @@ class BootManager:
             self.always_listening.start()
             logger.info("[BootManager] Always Listening background thread started.")
 
+        # 12.5 Windows Startup Registration
+        import sys
+        if sys.platform == "win32":
+            try:
+                from config import NOVA_START_WITH_WINDOWS
+                from startup.windows_startup import WindowsStartup
+                win_startup = WindowsStartup()
+                if NOVA_START_WITH_WINDOWS:
+                    if not win_startup.is_registered():
+                        win_startup.register()
+                else:
+                    if win_startup.is_registered():
+                        win_startup.remove()
+            except Exception as e:
+                logger.warning("[SYSTEM] Failed setting startup configuration: %s", e)
+
         self.initialized = True
         duration = time.time() - started
-        logger.info("[BootManager] Startup bootstrap completed successfully in %.2fs.", duration)
+        logger.info("[SYSTEM] Startup bootstrap completed successfully in %.2fs.", duration)
         
         return BootReport(
             success=True,
@@ -249,3 +268,54 @@ class BootManager:
             errors=errors,
             greeting=greeting
         )
+
+    def shutdown_system(self) -> None:
+        """Cleanly terminates all background threads, managers, loops, and exits the application."""
+        logger.info("[SYSTEM] Initiating clean shutdown sequence...")
+        
+        # 1. Stop AlwaysListeningEngine
+        if self.always_listening:
+            try:
+                logger.info("[SYSTEM] Stopping AlwaysListeningEngine...")
+                self.always_listening.stop()
+            except Exception as e:
+                logger.error("[SYSTEM] Error stopping always_listening: %s", e)
+                
+        # 2. Stop VoiceManager
+        if self.voice_manager:
+            try:
+                logger.info("[SYSTEM] Stopping VoiceManager...")
+                self.voice_manager.stop()
+            except Exception as e:
+                logger.error("[SYSTEM] Error stopping voice_manager: %s", e)
+                
+            # 3. Stop SpeechController (TTS)
+            if hasattr(self.voice_manager, "speech_controller") and self.voice_manager.speech_controller:
+                try:
+                    logger.info("[SYSTEM] Stopping SpeechController...")
+                    self.voice_manager.speech_controller.stop_event.set()
+                    self.voice_manager.speech_controller.interrupt()
+                except Exception as e:
+                    logger.error("[SYSTEM] Error stopping speech_controller: %s", e)
+                    
+        # 4. Stop BrowserManager
+        try:
+            from utils.browser_manager import BrowserManager
+            bm_inst = getattr(BrowserManager, "_instance", None)
+            if bm_inst:
+                logger.info("[SYSTEM] Stopping BrowserManager...")
+                bm_inst.shutdown()
+        except Exception as e:
+            logger.error("[SYSTEM] Error shutting down BrowserManager: %s", e)
+
+        # 5. Stop MCPManager if active in plugins
+        try:
+            if self.agent_registry and self.agent_registry.is_registered("mcp"):
+                mcp_pl = self.agent_registry.resolve("mcp")
+                if hasattr(mcp_pl, "manager") and mcp_pl.manager:
+                    logger.info("[SYSTEM] Stopping MCPManager...")
+                    mcp_pl.manager.shutdown()
+        except Exception as e:
+            logger.error("[SYSTEM] Error shutting down MCP: %s", e)
+
+        logger.info("[SYSTEM] Shutdown complete. Exiting process.")
