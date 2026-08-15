@@ -127,3 +127,27 @@ AUTO_START: bool = os.getenv("AUTO_START", "false").strip().lower() == "true"
 START_MINIMIZED: bool = os.getenv("START_MINIMIZED", "false").strip().lower() == "true"
 SYSTEM_TRAY: bool = os.getenv("SYSTEM_TRAY", "false").strip().lower() == "true"
 STARTUP_GREETING_ENABLED: bool = os.getenv("STARTUP_GREETING_ENABLED", "true").strip().lower() == "true"
+
+# Jarvis Upgrade Configuration
+CONVERSATION_TIMEOUT_SECONDS: float = float(os.getenv("CONVERSATION_TIMEOUT_SECONDS", "30.0").strip())
+NOVA_LANGUAGE: str = os.getenv("NOVA_LANGUAGE", "auto").strip().lower()
+# NOVA_RESPONSE_LANGUAGE: 'en' for English-first responses, 'te' for Telugu, 'auto' follows NOVA_LANGUAGE
+NOVA_RESPONSE_LANGUAGE: str = os.getenv("NOVA_RESPONSE_LANGUAGE", "en").strip().lower()
+NOVA_START_WITH_WINDOWS: bool = os.getenv("NOVA_START_WITH_WINDOWS", "false").strip().lower() == "true"
+
+# Voice Optimization Configuration
+# Model: 'base' is the default — it is multilingual and supports Telugu, Hindi, Tamil, Kannada, English.
+# 'base.en' is English-only and must NOT be used as the default because it cannot decode non-English speech.
+# Override with NOVA_WHISPER_MODEL=small in .env for higher accuracy at slightly higher latency cost.
+NOVA_WHISPER_MODEL: str = os.getenv("NOVA_WHISPER_MODEL", "base").strip()
+NOVA_MULTILINGUAL_MODEL: str = os.getenv("NOVA_MULTILINGUAL_MODEL", "base").strip()
+NOVA_INITIAL_SILENCE_TIMEOUT: float = float(os.getenv("NOVA_INITIAL_SILENCE_TIMEOUT", "2.0").strip())
+NOVA_SILENCE_DURATION: float = float(os.getenv("NOVA_SILENCE_DURATION", "0.7").strip())
+NOVA_MAX_COMMAND_SECONDS: float = float(os.getenv("NOVA_MAX_COMMAND_SECONDS", "6.0").strip())
+
+# TTS Echo Suppression
+# Post-TTS delay: seconds to wait after speak() before re-opening microphone.
+# Prevents Nova from hearing its own TTS output.
+NOVA_POST_TTS_DELAY: float = float(os.getenv("NOVA_POST_TTS_DELAY", "0.8").strip())
+# Post-playback cooldown inside AudioRecorder: duration to discard mic input after TTS ends.
+NOVA_POST_PLAYBACK_COOLDOWN: float = float(os.getenv("NOVA_POST_PLAYBACK_COOLDOWN", "1.0").strip())

@@ -125,3 +125,21 @@ class TestAutonomousCoder:
         assert report.success is False
         assert report.retries_attempted == 3  # Initial + 2 retries
         assert len(report.errors) > 0
+
+    def test_workflow_fails_immediately_if_no_runnable_entry(
+        self, mock_coding_agent, mock_workspace_agent, mock_browser_agent, tmp_path
+    ):
+        # Mock CodingAgent to return a real existing empty directory
+        mock_coding_agent.execute.return_value.root_dir = tmp_path
+        
+        coder = AutonomousCoder(
+            coding_agent=mock_coding_agent,
+            workspace_agent=mock_workspace_agent,
+            browser_agent=mock_browser_agent,
+            max_retries=2
+        )
+        
+        report = coder.execute_workflow("Create a python script")
+        assert report.success is False
+        assert report.retries_attempted == 0
+        assert "No runnable entry file" in report.errors[0]

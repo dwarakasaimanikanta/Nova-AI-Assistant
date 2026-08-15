@@ -70,7 +70,10 @@ class ProjectLifecycle:
         if self.planner_agent:
             try:
                 plan_res = self.planner_agent.execute(goal)
-                plan_tasks = [t.description for t in plan_res.tasks]
+                if hasattr(plan_res, "tasks"):
+                    plan_tasks = [t.description for t in plan_res.tasks]
+                elif hasattr(plan_res, "task_results"):
+                    plan_tasks = [t.get("description", "") for t in plan_res.task_results]
                 logger.info("[ProjectLifecycle] Planner parsed %d tasks.", len(plan_tasks))
             except Exception as e:
                 logger.error("[ProjectLifecycle] PlannerAgent failed: %s", e)
@@ -81,24 +84,19 @@ class ProjectLifecycle:
         errors.extend(coder_report.errors)
 
         # 3. Save execution report in MemoryAgent
+        duration = time.time() - started
         if self.memory_agent:
             try:
                 status_str = "SUCCESS" if coder_report.success else "FAILED"
-                self.memory_agent.remember(
-                    category="short_term",
-                    key="last_lifecycle_status",
-                    value=status_str
-                )
-                if coder_report.preview_url:
-                    self.memory_agent.remember(
-                        category="short_term",
-                        key="last_project_url",
-                        value=coder_report.preview_url
-                    )
+                self.memory_agent.remember(category="short_term", key="project_name", value=goal)
+                self.memory_agent.remember(category="short_term", key="files_created", value=", ".join(coder_report.files_created))
+                self.memory_agent.remember(category="short_term", key="runtime_status", value=status_str)
+                self.memory_agent.remember(category="short_term", key="browser_url", value=coder_report.preview_url or "N/A")
+                self.memory_agent.remember(category="short_term", key="execution_duration", value=f"{duration:.2f}s")
+                self.memory_agent.remember(category="short_term", key="last_lifecycle_status", value=status_str)
+                self.memory_agent.remember(category="short_term", key="last_project_url", value=coder_report.preview_url or "")
             except Exception as mem_err:
                 logger.debug("Failed logging project lifecycle to MemoryAgent: %s", mem_err)
-
-        duration = time.time() - started
         report = LifecycleReport(
             success=coder_report.success,
             plan_tasks=plan_tasks,

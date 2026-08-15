@@ -125,6 +125,7 @@ class GeminiProvider(BaseLLMProvider):
         messages: list[Any],
         stream: bool = False,
         tools: list[Any] | None = None,
+        system_instruction: str | None = None,
     ) -> LLMResponse | Generator[str, None, None]:
         """
         Execute text generation or tool call generation against the Gemini model.
@@ -133,6 +134,7 @@ class GeminiProvider(BaseLLMProvider):
             messages: Complete thread history.
             stream: True to return chunk generator.
             tools: List of function declarations the model can call.
+            system_instruction: Optional system instruction prompt override.
 
         Returns:
             LLMResponse or chunk generator.
@@ -142,6 +144,8 @@ class GeminiProvider(BaseLLMProvider):
 
         # Construct GenerateContentConfig config arguments
         config_args = {"temperature": 0.7}
+        if system_instruction:
+            config_args["system_instruction"] = system_instruction
         if tools:
             wrapped_tools = []
             if isinstance(tools, list):

@@ -41,31 +41,43 @@ def test_engine_voice_registration() -> None:
 
 
 @patch("platform.system")
-@patch("subprocess.Popen")
-def test_voice_execution_windows(mock_popen: MagicMock, mock_system: MagicMock) -> None:
-    """Ensure Windows platform triggers PowerShell System.Speech call."""
+@patch("ctypes.windll.winmm", create=True)
+def test_voice_execution_windows(mock_winmm: MagicMock, mock_system: MagicMock) -> None:
+    """Ensure Windows platform triggers WinMM MCI playback calls."""
     mock_system.return_value = "Windows"
     tool = VoiceTool()
-    res = tool.execute(text="hello")
-
+    
+    def mock_gen(text, voice, out_path):
+        import pathlib
+        pathlib.Path(out_path).write_text("dummy", encoding="utf-8")
+        
+    with patch("tools.voice.os.getenv", return_value="production"):
+        with patch.object(tool, "_generate_audio_sync", side_effect=mock_gen):
+            res = tool.execute(text="hello")
+            
     assert "Success" in res
-    mock_popen.assert_called_once()
-    args, kwargs = mock_popen.call_args
-    # First argument should be list with powershell
-    assert args[0][0] == "powershell"
-    assert "SpeechSynthesizer" in args[0][2]
+    mock_winmm.mciSendStringW.assert_called()
 
 
 @patch("platform.system")
 @patch("subprocess.Popen")
 def test_voice_execution_macos(mock_popen: MagicMock, mock_system: MagicMock) -> None:
-    """Ensure macOS platform triggers say call."""
+    """Ensure macOS platform triggers afplay command."""
     mock_system.return_value = "Darwin"
     tool = VoiceTool()
-    res = tool.execute(text="hello world")
-
+    
+    def mock_gen(text, voice, out_path):
+        import pathlib
+        pathlib.Path(out_path).write_text("dummy", encoding="utf-8")
+        
+    with patch("tools.voice.os.getenv", return_value="production"):
+        with patch.object(tool, "_generate_audio_sync", side_effect=mock_gen):
+            res = tool.execute(text="hello world")
+            
     assert "Success" in res
-    mock_popen.assert_called_once_with(["say", "hello world"], stdout=-3, stderr=-3)
+    mock_popen.assert_called_once()
+    args, kwargs = mock_popen.call_args
+    assert args[0][0] == "afplay"
 
 
 def test_voice_missing_text() -> None:

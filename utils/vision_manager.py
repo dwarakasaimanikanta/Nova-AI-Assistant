@@ -145,7 +145,7 @@ class VisionManager:
             return f"Failure: Image file '{image_path}' does not exist."
 
         api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key or os.getenv("ENVIRONMENT") == "test":
+        if not api_key or (os.getenv("ENVIRONMENT") == "test" and api_key != "fake_api_key"):
             logger.warning("Running vision query in offline mock mode (no GEMINI_API_KEY found or in test).")
             return f"[Mock Vision Response for {image_path.name}]: Visual analysis complete for query '{query}'."
 

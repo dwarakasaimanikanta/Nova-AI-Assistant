@@ -39,11 +39,14 @@ class BootReport:
 
 class BootManager:
     """Single entry point coordinating the real startup pipeline initialization and wiring."""
+    _instance: Optional[BootManager] = None
 
     def __init__(self) -> None:
+        BootManager._instance = self
         self.config_service: Optional[Any] = None
         self.agent_registry: Optional[Any] = None
         self.memory_agent: Optional[Any] = None
+        self.short_term: Optional[Any] = None
         self.session_manager: Optional[Any] = None
         self.voice_manager: Optional[Any] = None
         self.always_listening: Optional[Any] = None
@@ -62,11 +65,11 @@ class BootManager:
         skipped_components = []
         errors = []
 
-        logger.info("[BootManager] Starting real startup integration pipeline...")
+        logger.info("[SYSTEM] Starting real startup integration pipeline...")
 
         # Avoid duplicate initialization
         if self.initialized:
-            logger.info("[BootManager] Already initialized. Returning cached boot report.")
+            logger.info("[SYSTEM] Already initialized. Returning cached boot report.")
             duration = time.time() - started
             return BootReport(
                 success=True,
@@ -102,7 +105,9 @@ class BootManager:
             # 4. Initialize Core Engine & ExecutiveAgent
             from core.engine import NovaEngine
             from core.executive_agent import ExecutiveAgent
-            engine = NovaEngine()
+            from memory.short_term import ShortTermMemory
+            self.short_term = ShortTermMemory()
+            engine = NovaEngine(memory=self.short_term)
             self.executive_agent = ExecutiveAgent(engine=engine, agent_registry=self.agent_registry)
             self.agent_registry.set_engine(engine)
             initialized_components.append("ExecutiveAgent")
@@ -126,19 +131,38 @@ class BootManager:
             if self.memory_agent:
                 self.memory_agent.remember("short_term", "last_session_id", session_id)
 
-            # 7. Initialize VoiceManager
+            # 7. Initialize VoiceManager with config values
             from voice.voice_manager import VoiceManager
-            self.voice_manager = VoiceManager(engine=engine)
+            from config import VOICE_INPUT_ENABLED, WAKE_WORD_ENABLED
+            self.voice_manager = VoiceManager(
+                engine=self.executive_agent,
+                wake_word_enabled=WAKE_WORD_ENABLED,
+                voice_input_enabled=VOICE_INPUT_ENABLED,
+            )
+            
+            # Associate with the loaded voice plugin if present
+            voice_plugin = None
+            for p in getattr(engine, "plugins", []):
+                if getattr(p, "name", "") == "voice":
+                    voice_plugin = p
+                    break
+            if voice_plugin:
+                voice_plugin.voice_manager = self.voice_manager
+                
             self.session_manager.voice_manager = self.voice_manager
             initialized_components.append("VoiceManager")
 
             # 8. Initialize AlwaysListeningEngine
             from voice.always_listening import AlwaysListeningEngine
+            from config import CONVERSATION_TIMEOUT_SECONDS
             self.always_listening = AlwaysListeningEngine(
                 voice_manager=self.voice_manager,
                 wake_detector=self.voice_manager.wake_detector,
-                audio_recorder=self.voice_manager.recorder
+                audio_recorder=self.voice_manager.recorder,
+                conversation_timeout=CONVERSATION_TIMEOUT_SECONDS,
+                on_wake_callback=lambda: self.voice_manager._safe_speak("Yes Boss.")
             )
+            self.voice_manager.always_listening = self.always_listening
             initialized_components.append("AlwaysListeningEngine")
 
             # 9. Initialize ConversationEngine
@@ -148,6 +172,11 @@ class BootManager:
                 voice_manager=self.voice_manager,
                 memory_agent=self.memory_agent
             )
+            
+            def handle_wake():
+                self.voice_manager._safe_speak("Yes Boss.")
+                
+            self.always_listening.on_wake_callback = handle_wake
             self.always_listening.on_command_callback = self.conversation_engine.process_speech
             initialized_components.append("ConversationEngine")
 
@@ -163,6 +192,7 @@ class BootManager:
                 planner_agent=planner_agent,
                 memory_agent=self.memory_agent
             )
+            self.executive_agent.execution_pipeline = self.execution_pipeline
             initialized_components.append("ExecutionPipeline")
 
             # Resolve optional agents and log status
@@ -191,37 +221,43 @@ class BootManager:
                 errors=errors
             )
 
-        # 11. Generate startup greeting prefix based on time of day
-        hour = datetime.datetime.now().hour
-        greeting_time = "Good morning"
-        if 12 <= hour < 17:
-            greeting_time = "Good afternoon"
-        elif 17 <= hour < 22:
-            greeting_time = "Good evening"
-        elif hour >= 22 or hour < 5:
-            greeting_time = "Good night"
+        # 11. Generate startup greeting
+        greeting = "Hello Boss.\nAll core systems are online.\nI'm ready."
 
-        greeting = f"{greeting_time} Boss.\nAll core systems are online.\nI'm ready."
-
-        # Speak greeting if voice outputs are supported
+        # Speak greeting if voice is enabled
         if self.voice_manager and getattr(self.voice_manager, "voice_input_enabled", False):
             try:
-                if hasattr(self.voice_manager, "tts") and hasattr(self.voice_manager.tts, "execute"):
-                    self.voice_manager.tts.execute(text=greeting)
+                self.voice_manager._safe_speak(greeting)
+                logger.info("[BootManager] Startup greeting spoken.")
             except Exception as tts_err:
                 logger.debug("Failed speaking startup greeting: %s", tts_err)
 
-        # 12. Switch to Always Listening mode
+        # 12. Start Always Listening mode (Jarvis-style continuous wake-word)
         if self.voice_manager:
             self.voice_manager.wake_word_enabled = True
-            self.voice_manager.state = "WAITING"
-            if getattr(self.voice_manager, "voice_input_enabled", False):
-                self.always_listening.start()
-                logger.info("[BootManager] Always Listening background thread started.")
+            self.voice_manager.state = "WAKING"
+            self.always_listening.start()
+            logger.info("[BootManager] Always Listening background thread started.")
+
+        # 12.5 Windows Startup Registration
+        import sys
+        if sys.platform == "win32":
+            try:
+                from config import NOVA_START_WITH_WINDOWS
+                from startup.windows_startup import WindowsStartup
+                win_startup = WindowsStartup()
+                if NOVA_START_WITH_WINDOWS:
+                    if not win_startup.is_registered():
+                        win_startup.register()
+                else:
+                    if win_startup.is_registered():
+                        win_startup.remove()
+            except Exception as e:
+                logger.warning("[SYSTEM] Failed setting startup configuration: %s", e)
 
         self.initialized = True
         duration = time.time() - started
-        logger.info("[BootManager] Startup bootstrap completed successfully in %.2fs.", duration)
+        logger.info("[SYSTEM] Startup bootstrap completed successfully in %.2fs.", duration)
         
         return BootReport(
             success=True,
@@ -232,3 +268,54 @@ class BootManager:
             errors=errors,
             greeting=greeting
         )
+
+    def shutdown_system(self) -> None:
+        """Cleanly terminates all background threads, managers, loops, and exits the application."""
+        logger.info("[SYSTEM] Initiating clean shutdown sequence...")
+        
+        # 1. Stop AlwaysListeningEngine
+        if self.always_listening:
+            try:
+                logger.info("[SYSTEM] Stopping AlwaysListeningEngine...")
+                self.always_listening.stop()
+            except Exception as e:
+                logger.error("[SYSTEM] Error stopping always_listening: %s", e)
+                
+        # 2. Stop VoiceManager
+        if self.voice_manager:
+            try:
+                logger.info("[SYSTEM] Stopping VoiceManager...")
+                self.voice_manager.stop()
+            except Exception as e:
+                logger.error("[SYSTEM] Error stopping voice_manager: %s", e)
+                
+            # 3. Stop SpeechController (TTS)
+            if hasattr(self.voice_manager, "speech_controller") and self.voice_manager.speech_controller:
+                try:
+                    logger.info("[SYSTEM] Stopping SpeechController...")
+                    self.voice_manager.speech_controller.stop_event.set()
+                    self.voice_manager.speech_controller.interrupt()
+                except Exception as e:
+                    logger.error("[SYSTEM] Error stopping speech_controller: %s", e)
+                    
+        # 4. Stop BrowserManager
+        try:
+            from utils.browser_manager import BrowserManager
+            bm_inst = getattr(BrowserManager, "_instance", None)
+            if bm_inst:
+                logger.info("[SYSTEM] Stopping BrowserManager...")
+                bm_inst.shutdown()
+        except Exception as e:
+            logger.error("[SYSTEM] Error shutting down BrowserManager: %s", e)
+
+        # 5. Stop MCPManager if active in plugins
+        try:
+            if self.agent_registry and self.agent_registry.is_registered("mcp"):
+                mcp_pl = self.agent_registry.resolve("mcp")
+                if hasattr(mcp_pl, "manager") and mcp_pl.manager:
+                    logger.info("[SYSTEM] Stopping MCPManager...")
+                    mcp_pl.manager.shutdown()
+        except Exception as e:
+            logger.error("[SYSTEM] Error shutting down MCP: %s", e)
+
+        logger.info("[SYSTEM] Shutdown complete. Exiting process.")

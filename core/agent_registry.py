@@ -73,11 +73,22 @@ class AgentFactory:
         # Simple injection: if the constructor accepts other agents, query the registry
         import inspect
         try:
-            sig = inspect.signature(cls.__init__)
-            params = sig.parameters
-            for name, param in params.items():
-                if name in ("self", "args", "kwargs"):
-                    continue
+            cls_name = cls.__name__
+            if cls_name == "PlannerAgent":
+                param_names = ["engine", "coding_agent", "browser_agent", "android_agent", "workspace_agent", "progress_callback"]
+            elif cls_name == "CodingAgent":
+                param_names = ["workspace_root", "progress_callback", "max_retries", "extra_providers"]
+            elif cls_name == "BrowserAgent":
+                param_names = ["browser_tool", "progress_callback", "max_step_retries"]
+            elif cls_name == "AndroidAgent":
+                param_names = ["android_tool", "progress_callback", "max_step_retries"]
+            elif cls_name == "WorkspaceAgent":
+                param_names = ["workspace_root", "progress_callback", "max_step_retries"]
+            else:
+                sig = inspect.signature(cls.__init__)
+                param_names = [n for n in sig.parameters.keys() if n not in ("self", "args", "kwargs")]
+
+            for name in param_names:
                 # If param matches a registered agent name, resolve it
                 if self.registry.is_registered(name):
                     kwargs[name] = self.registry.resolve(name)
@@ -136,6 +147,14 @@ class AgentLoader:
                 AgentMetadata("memory", description="Persistent intelligence layer"),
                 "agents.memory_agent.MemoryAgent"
             ),
+            (
+                AgentMetadata("git", description="Autonomous Git control manager"),
+                "agents.git_agent.GitAgent"
+            ),
+            (
+                AgentMetadata("deployment", description="Autonomous cloud deployment builder"),
+                "agents.deployment_agent.DeploymentAgent"
+            ),
         ]
 
         for meta, class_path in default_agents:
@@ -154,7 +173,7 @@ class AgentRegistry:
 
     def __init__(self) -> None:
         self._descriptors: Dict[str, AgentDescriptor] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._factory = AgentFactory(self)
         self._loader = AgentLoader(self)
         self._engine: Optional[Any] = None

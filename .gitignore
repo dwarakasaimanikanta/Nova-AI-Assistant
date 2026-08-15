@@ -37,4 +37,5 @@ Thumbs.db
 htmlcov/
 
 .venv_working_backup/
+
 voice_models/

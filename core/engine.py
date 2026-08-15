@@ -5,6 +5,7 @@ Main engine logic and coordination for the Nova AI Assistant supporting tool cal
 """
 
 from collections.abc import Generator
+from typing import Any
 
 from config import GEMINI_API_KEY
 from memory.short_term import ShortTermMemory
@@ -64,7 +65,42 @@ class NovaEngine:
         # Initialize Tool calling subsystems
         self.registry = ToolRegistry()
         self.executor = ToolExecutor()
-        self.permission_gate = PermissionGate()
+        # Default permission callback: approve all voice-safe tool actions.
+        # The PermissionGate already auto-approves LOW-risk actions without calling this
+        # callback. This callback is ONLY called for HIGH-risk tool actions.
+        # We broaden approval here to allow all reasonable desktop AI operations.
+        def default_permission_callback(tool_name: str, args: dict[str, Any]) -> bool:
+            action = args.get("action", "")
+            # File operations: create, write, read, list, delete, rename, move, copy
+            if tool_name == "file_manager":
+                return True  # All file_manager actions allowed
+            # System control: launch and close desktop apps
+            if tool_name == "system_control":
+                return True  # launch_app, close_app, volume, etc.
+            # Terminal: run shell commands
+            if tool_name == "terminal":
+                return True
+            # Browser: open URLs, close browser (already LOW risk per PermissionGate,
+            # but listed here for completeness in case risk level changes)
+            if tool_name in ("browser", "browser_agent"):
+                return True
+            # Desktop automation: open applications, take screenshots
+            if tool_name == "desktop_automation":
+                return True
+            # Web search, calendar, android: always approved
+            if tool_name in ("web_search", "calendar", "android"):
+                return True
+            # Code helper (parse, write): approved
+            if tool_name == "code_helper":
+                return True
+            # Unknown tool: deny by default and log
+            logger.warning(
+                "[PermissionGate] Unknown HIGH-risk tool '%s' with action '%s' — denied by default.",
+                tool_name, action
+            )
+            return False
+        self.permission_gate = PermissionGate(callback=default_permission_callback)
+        self._selected_language = "en"
 
 
         # Initialize plugins and dynamically load all discovered modules
@@ -93,8 +129,48 @@ class NovaEngine:
                 logger.info("AgentPlanner initialized successfully using Routing LLM Provider.")
             else:
                 logger.warning("No online or local LLM pathways detected at startup. Running in offline/echo fallback mode.")
-        except Exception as e:
-            logger.exception("Failed to initialize AgentPlanner with Routing Provider: %s", e)
+        except Exception as brain_err:
+            logger.warning("Could not initialize Agentic Planner brain: %s", brain_err)
+
+        # Set voice_manager reference if loaded
+        self.voice_manager = None
+
+        logger.info("NovaEngine initialized successfully.")
+
+    @property
+    def selected_language(self) -> str:
+        from core.language_session import LanguageSession
+        return LanguageSession().selected_language
+
+    @selected_language.setter
+    def selected_language(self, val: str) -> None:
+        from core.language_session import LanguageSession
+        LanguageSession().selected_language = val
+        logger.info("[LANGUAGE-STATE]")
+        logger.info("Selected response language: %s", LanguageSession().selected_language)
+
+    @property
+    def response_language(self) -> str:
+        from core.language_session import LanguageSession
+        return LanguageSession().selected_language
+
+    @response_language.setter
+    def response_language(self, val: str) -> None:
+        self.selected_language = val
+
+    @property
+    def telugu_mode(self) -> bool:
+        from core.language_session import LanguageSession
+        return LanguageSession().selected_language == "te"
+
+    @telugu_mode.setter
+    def telugu_mode(self, val: bool) -> None:
+        if val:
+            self.selected_language = "te"
+        else:
+            if self.selected_language == "te":
+                self.selected_language = "en"
+
 
     def load_plugin(self, plugin: Any) -> None:
         """
@@ -224,18 +300,35 @@ class NovaEngine:
 
         return " ".join(corrected_words)
 
-    def handle_input(self, user_input: str, stream: bool = False) -> str | Generator[str, None, None]:
+    def handle_input(self, user_input: str, stream: bool = False, selected_language: str = None, intent_category: str = None) -> str | Generator[str, None, None]:
         """
         Process the user input, query matching skills, update memory, and return a response.
 
         Args:
             user_input: The raw input string from the user.
             stream: True to return a generator of response chunks (only valid for LLM routing).
+            selected_language: Optional selected language override.
 
         Returns:
             The text response or a generator yielding chunks.
             """
+        if selected_language:
+            self.selected_language = selected_language
         original_input = user_input.strip()
+        
+        # ── PART 1: Smart Command Normalizer ────────────────────────────────
+        normalized = original_input
+        import re
+        normalized = re.sub(r"\b(vscore|vs\s+code|visual\s+studio)\b", "VS Code", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\b(youtube|you\s+tube|u\s+tube)\b", "YouTube", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\b(chrome\s+browser|google\s+chrome)\b", "Chrome", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\b(git\s+hub)\b", "GitHub", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\b(chat\s+gpt)\b", "ChatGPT", normalized, flags=re.IGNORECASE)
+        
+        if normalized != original_input:
+            logger.info("[NORMALIZER] Normalized user input: %r -> %r", original_input, normalized)
+            original_input = normalized
+
         logger.info("Processing user input: '%s' (stream=%s)", original_input, stream)
 
         # Apply contact name correction layer
@@ -244,8 +337,36 @@ class NovaEngine:
             logger.info("Original transcript: '%s'", original_input)
             logger.info("Corrected contact name transcript: '%s'", cleaned_input)
 
-        # 1. Log the corrected user's message in memory
-        self.memory.add_message(role="user", content=cleaned_input)
+        # Check for explicit language switches
+        from utils.language_switch import detect_and_handle_language_switch
+        if detect_and_handle_language_switch(cleaned_input, self):
+            confirmations = {
+                "en": "Sure Boss. I'll speak in English. How can I help you?",
+                "te": "సరే బాస్. ఇక నుంచి తెలుగులో మాట్లాడతాను. మీకు ఏం సహాయం కావాలి?",
+                "hi": "ठीक है बॉस। अब से मैं हिंदी में बात करूंगा। मैं आपकी कैसे मदद कर सकता हूँ?",
+                "ta": "சரி பாஸ். இனிமேல் நான் தமிழில் பேசுவேன். நான் உங்களுக்கு எப்படி உதவலாம்?",
+                "kn": "ಸರಿ ಬಾಸ್. ಇನ್ನು ಮುಂದೆ ನಾನು ಕನ್ನಡದಲ್ಲಿ ಮಾತನಾಡುತ್ತೇನೆ. ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?"
+            }
+            confirm_msg = confirmations.get(self.selected_language, "Sure Boss. I'll speak in English. How can I help you?")
+            self.memory.add_message(role="user", content=cleaned_input)
+            self.memory.add_message(role="assistant", content=confirm_msg)
+            
+            logger.info("[LANGUAGE]")
+            logger.info("Language switch requested: true")
+            
+            if stream:
+                def single_chunk_gen() -> Generator[str, None, None]:
+                    yield confirm_msg
+                return single_chunk_gen()
+            return confirm_msg
+
+        logger.info("[LANGUAGE]")
+        logger.info("Language switch requested: false")
+
+        # 1. Log the corrected user's message in memory if not already duplicate
+        raw_hist = self.memory.get_history()
+        if not raw_hist or raw_hist[-1].role != "user" or raw_hist[-1].content != cleaned_input:
+            self.memory.add_message(role="user", content=cleaned_input)
 
         # Route shell commands directly to TerminalTool to prevent LLM routing/hallucination errors
         parts = cleaned_input.split()
@@ -285,7 +406,7 @@ class NovaEngine:
 
         # 3. If no command skill matched, try to route to the AI Agentic Planner
         if response is None and self.conversation is not None:
-            return self.conversation.ask(cleaned_input, stream=stream)
+            return self.conversation.ask(cleaned_input, stream=stream, selected_language=self.selected_language, intent_category=intent_category)
 
         # 4. Fallback to EchoSkill if LLM is not active and no other skill matched
         if response is None:
@@ -317,3 +438,9 @@ class NovaEngine:
                     plugin.shutdown()
                 except Exception as e:
                     logger.error("Failed to shutdown plugin %s: %s", plugin.name, e)
+        from core.boot_manager import BootManager
+        if BootManager._instance:
+            try:
+                BootManager._instance.shutdown_system()
+            except Exception as e:
+                logger.error("Failed to invoke BootManager.shutdown_system: %s", e)

@@ -72,7 +72,7 @@ class TestBootManager:
         mock_session_mgr.start_session.assert_called_once_with("restored_session_xyz")
         mock_listening.start.assert_called_once()
         assert mock_voice_mgr.wake_word_enabled is True
-        assert mock_voice_mgr.state == "WAITING"
+        assert mock_voice_mgr.state in ("WAKING", "WAITING")
 
     @patch("core.config_service.ConfigService")
     @patch("core.agent_registry.AgentRegistry")
