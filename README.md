@@ -136,7 +136,7 @@ NOVA is also available as a lightweight web deployment on Vercel, providing a re
 
 ### 🚀 Live Demo
 
-**[Launch NOVA Web App](https://verceldeploy-eight-kappa.vercel.app/)**
+**[Launch NOVA Web App](https://nova-ai-command.vercel.app/)**
 
 ### Web vs. Desktop Feature Matrix
 
