@@ -130,6 +130,49 @@ python main.py
 
 ---
 
+## 🌐 Vercel Web Deployment
+
+NOVA is also available as a lightweight web deployment on Vercel, providing a responsive holographic dashboard and Gemini-powered conversational assistant.
+
+### 🚀 Live Demo
+
+**[Launch NOVA Web App](https://verceldeploy-eight-kappa.vercel.app/)**
+
+### Web vs. Desktop Feature Matrix
+
+| Feature | Web Deployment (Vercel) | Local Desktop App |
+|---------|-------------------------|-------------------|
+| **Conversational AI** | Yes — Google Gemini | Yes — Gemini & Ollama |
+| **Multilingual Support** | Yes | Yes |
+| **In-Browser Mic (STT)** | Yes | Desktop voice system |
+| **In-Browser Audio (TTS)** | Yes | Local TTS |
+| **Holographic Visual HUD** | Yes | Yes |
+| **Local App Execution** | No | Yes |
+| **Local File Operations** | No | Yes |
+| **System Control** | No | Yes |
+| **ADB / Android Automation** | No | Yes |
+
+### Deployment Architecture
+
+The Vercel version uses an isolated lightweight deployment directory:
+
+```text
+vercel_deploy/
+├── api/
+├── public/
+├── requirements.txt
+└── vercel.json
+```
+
+The desktop NOVA application, local AI models, voice models, databases, logs, virtual environments, and other local resources are not included in the Vercel deployment.
+
+### Important
+
+The Vercel web version is a cloud-based conversational interface. Desktop-only capabilities such as local application launching, local file operations, system control, Ollama-based local inference, and ADB/Android automation remain available in the local desktop version.
+
+---
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
+

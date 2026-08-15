@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NOVA - Neural Online Virtual Assistant</title>
+  <!-- Google Fonts for futuristic HUD styling -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Sci-fi background grid/glow overlay -->
+  <div class="bg-scanline"></div>
+  <div class="bg-grid"></div>
+  <div class="bg-ambient-glow"></div>
+
+  <div class="app-container">
+    <!-- TOP BAR HUD -->
+    <header class="top-bar">
+      <div class="logo-section">
+        <div class="reactor-mini-glow"></div>
+        <span class="logo-text">NOVA <span class="logo-sub">v1.0.0</span></span>
+      </div>
+      <div class="status-section">
+        <div class="status-indicator animate-pulse" id="status-dot"></div>
+        <span class="status-text" id="status-label">INITIALIZING...</span>
+      </div>
+      <div class="controls-section">
+        <!-- Language selector -->
+        <select id="language-select" class="hud-select">
+          <option value="en">ENGLISH (EN)</option>
+          <option value="te">తెలుగు (TE)</option>
+          <option value="hi">हिन्दी (HI)</option>
+          <option value="ta">தமிழ் (TA)</option>
+          <option value="kn">ಕನ್ನಡ (KN)</option>
+        </select>
+        <!-- Speech Synthesis Toggle -->
+        <button id="tts-toggle" class="hud-btn active" title="Mute/Unmute Speech Synthesis">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN BODY -->
+    <main class="main-frame">
+      <!-- LEFT SECTION: Circular Hologram Core -->
+      <section class="hologram-panel">
+        <div class="hologram-viewport">
+          <canvas id="holo-canvas" width="600" height="600"></canvas>
+          <!-- Floating interactive status rings -->
+          <div class="canvas-overlay-text">
+            <span class="system-title">CORE STATUS</span>
+            <span class="system-value" id="core-state-val">ACTIVE</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT SECTION: Chat Window -->
+      <section class="chat-panel">
+        <div class="chat-header">
+          <h2>COMMUNICATION FEED</h2>
+          <span class="feed-indicator">SYNC: CLOUD</span>
+        </div>
+        
+        <div class="chat-messages" id="chat-messages-container">
+          <!-- Initial greeting bubble -->
+          <div class="message assistant-msg">
+            <div class="msg-bubble">
+              <p>NOVA online. Web interfaces synchronized. Ready to assist, Boss.</p>
+              <span class="msg-time" id="greeting-time">23:52</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-input-area">
+          <div class="input-wrapper">
+            <input type="text" id="user-input" placeholder="Transmit command query..." autocomplete="off">
+            
+            <!-- Voice Dictation Button -->
+            <button id="mic-btn" class="input-action-btn" title="Activate voice transcript">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="22"></line>
+              </svg>
+            </button>
+            
+            <!-- Send Button -->
+            <button id="send-btn" class="input-action-btn" title="Send message">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- CAPABILITIES MODAL / INFO SECTION -->
+    <div class="system-notes-bar">
+      <div class="notes-header">
+        <svg class="icon note-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <span>DEPLOYMENT MODE: VERCEL SERVERLESS CLOUD</span>
+      </div>
+      <div class="notes-grid">
+        <div class="note-card success-card">
+          <h4>WEB ENABLED</h4>
+          <ul>
+            <li>Gemini Conversational Intelligence (1.5 Flash)</li>
+            <li>In-Browser Voice Dictation (STT)</li>
+            <li>In-Browser Speech Synthesis (TTS)</li>
+            <li>Responsive Interface (Desktop/Mobile)</li>
+          </ul>
+        </div>
+        <div class="note-card warning-card">
+          <h4>DESKTOP ONLY</h4>
+          <ul>
+            <li>PortAudio mic processing & offline Whisper</li>
+            <li>Piper offline Speech generation</li>
+            <li>Local system commands, file edits, & apps launch</li>
+            <li>PyQt6 holographic canvas desktop renderer</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTTOM STATS HUD -->
+    <footer class="bottom-hud">
+      <div class="stat-card">
+        <span class="stat-label">LLM BACKEND</span>
+        <span class="stat-value text-cyan">GEMINI 1.5</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">NETWORK STATE</span>
+        <span class="stat-value text-green" id="network-val">ONLINE</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">AUDIO SOURCE</span>
+        <span class="stat-value text-amber" id="audio-source-val">BROWSER MIC</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">SYS FRAME RATE</span>
+        <span class="stat-value text-cyan">60 FPS</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
