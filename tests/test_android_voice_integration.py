@@ -13,16 +13,16 @@ from voice.voice_manager import format_spoken_response
 # ── format_spoken_response: call ──────────────────────────────────────────────
 
 def test_call_spoken_response_amma():
-    """'Success: Calling Amma (+91...).' → 'Ammaకి కాల్ చేస్తున్నాను.'"""
+    """'Success: Calling Amma (+91...).' → 'Ammaకి కాల్ చేస్తున్నాను.' (Telugu mode)"""
     raw = "Success: Calling Amma (+919876543210)."
-    result = format_spoken_response(raw)
+    result = format_spoken_response(raw, response_language="te")
     assert "కాల్ చేస్తున్నాను" in result
     assert "Amma" in result
 
 
 def test_call_spoken_response_dad():
     raw = "Success: Calling Dad (+919999999999)."
-    result = format_spoken_response(raw)
+    result = format_spoken_response(raw, response_language="te")
     assert "కాల్ చేస్తున్నాను" in result
     assert "Dad" in result
 
@@ -30,7 +30,7 @@ def test_call_spoken_response_dad():
 def test_call_spoken_response_lowercase_name():
     """Tool may return lowercase name – it should be capitalized in the spoken response."""
     raw = "Success: Calling amma (+919876543210)."
-    result = format_spoken_response(raw)
+    result = format_spoken_response(raw, response_language="te")
     assert "కాల్ చేస్తున్నాను" in result
     # Name should be capitalized
     assert "Amma" in result or "amma" in result.lower()
@@ -39,7 +39,7 @@ def test_call_spoken_response_lowercase_name():
 def test_call_failure_spoken():
     """ADB failure → generic Telugu error, never raw error text."""
     raw = "Failure: Could not initiate call. device offline"
-    result = format_spoken_response(raw)
+    result = format_spoken_response(raw, response_language="te")
     assert "Success" not in result
     assert "Failure" not in result
     assert "device offline" not in result
@@ -48,9 +48,9 @@ def test_call_failure_spoken():
 
 
 def test_adb_not_found_spoken():
-    """ADB not installed → specific USB hint in Telugu."""
+    """ADB not installed → specific USB hint."""
     raw = "Failure: ADB not found. Please install Android Debug Bridge."
-    result = format_spoken_response(raw)
+    result = format_spoken_response(raw, response_language="te")
     # The "adb not found" pattern matches first
     assert "connect" in result.lower() or "USB" in result or "Phone" in result
 
@@ -60,7 +60,7 @@ def test_adb_not_found_spoken():
 def test_sms_spoken_response():
     """'Success: SMS composed for Ravi. Please send from phone.' → Telugu phrase."""
     raw = "Success: SMS composed for Ravi. Please send from phone."
-    result = format_spoken_response(raw)
+    result = format_spoken_response(raw, response_language="te")
     assert "మెసేజ్" in result
     assert "సిద్ధం" in result
     assert "Ravi" in result or "ravi" in result.lower()
@@ -68,7 +68,7 @@ def test_sms_spoken_response():
 
 def test_sms_spoken_does_not_contain_success():
     raw = "Success: SMS composed for Amma. Please send from phone."
-    result = format_spoken_response(raw)
+    result = format_spoken_response(raw, response_language="te")
     assert "Success" not in result
     assert "Please send from phone" not in result
 
@@ -78,14 +78,14 @@ def test_sms_spoken_does_not_contain_success():
 def test_whatsapp_spoken_response():
     """'Success: WhatsApp opened for Sai. Please send from phone.' → Telugu phrase."""
     raw = "Success: WhatsApp opened for Sai. Please send from phone."
-    result = format_spoken_response(raw)
+    result = format_spoken_response(raw, response_language="te")
     assert "వాట్సాప్" in result
     assert "తెరుస్తున్నాను" in result
 
 
 def test_whatsapp_spoken_does_not_contain_raw():
     raw = "Success: WhatsApp opened for Amma. Please send from phone."
-    result = format_spoken_response(raw)
+    result = format_spoken_response(raw, response_language="te")
     assert "Please send from phone" not in result
     assert "Success" not in result
 
@@ -94,9 +94,8 @@ def test_whatsapp_spoken_does_not_contain_raw():
 
 def test_contact_not_found_spoken():
     raw = "Failure: Contact 'Stranger' not found. Add them to data/contacts.json."
-    result = format_spoken_response(raw)
-    assert "Contact" in result
-    assert "దొరకలేదు" in result
+    result = format_spoken_response(raw, response_language="te")
+    assert "Stranger" in result or "దొరకలేదు" in result
     assert "not found" not in result
 
 

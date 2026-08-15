@@ -47,10 +47,25 @@ def main() -> None:
             logger.info("Launching Desktop PyQt6 Conversational GUI...")
             try:
                 from PyQt6.QtWidgets import QApplication
+                from PyQt6.QtCore import QTimer
                 from interface.gui.gui_app import NovaGUIApp
+                import signal
                 
                 app = QApplication(sys.argv)
                 gui = NovaGUIApp(engine=engine)
+                
+                # Signal handler for graceful shutdown on Ctrl+C (SIGINT)
+                def sigint_handler(sig, frame):
+                    logger.info("[Watchdog] SIGINT received. Initiating graceful shutdown...")
+                    gui.shutdown()
+
+                signal.signal(signal.SIGINT, sigint_handler)
+
+                # Periodically yield control to the Python interpreter so it can process signals
+                sig_timer = QTimer(gui)
+                sig_timer.timeout.connect(lambda: None)
+                sig_timer.start(250) # check every 250ms
+                
                 gui.show()
                 sys.exit(app.exec())
             except Exception as e:
@@ -68,9 +83,15 @@ def main() -> None:
                 logger.critical("Critical error occurred while running Nova CLI: %s", e, exc_info=True)
                 print(f"Critical System Error: {e}")
     finally:
+        if 'boot_mgr' in locals() and boot_mgr.session_manager:
+            try:
+                boot_mgr.session_manager.end_session()
+            except Exception as e:
+                logger.warning("Failed to end session gracefully: %s", e)
         engine.shutdown()
         import threading
         logger.info("[Watchdog] Engine shutdown complete.")
+
         active_threads = threading.enumerate()
         logger.info("[Watchdog] Final active thread count before process exit: %d", len(active_threads))
         for t in active_threads:

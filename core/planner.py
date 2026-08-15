@@ -94,7 +94,7 @@ class AgentPlanner:
 
         return history
 
-    def ask(self, user_input: str, stream: bool = False) -> str | Generator[str, None, None]:
+    def ask(self, user_input: str, stream: bool = False, selected_language: str = "en", intent_category: str = None) -> str | Generator[str, None, None]:
         """
         Query the LLM provider with tool execution loop and return the final response.
 
@@ -179,18 +179,80 @@ class AgentPlanner:
         declarations = self.registry.get_gemini_declarations()
         logger.debug("Active tool declarations count: %d", len(declarations))
 
+        # Restrict tools if intent is purely conversational, knowledge explanation, or coding question
+        if intent_category in ("CONVERSATION", "KNOWLEDGE", "CODING"):
+            lower_input = user_input.lower()
+            # Retain tools if they explicitly demand file creation/modification tools
+            if not any(kw in lower_input for kw in ("create", "write file", "save", "make file", "mkdir")):
+                logger.info("[Planner] Intent is conversational/knowledge fallback. Disabling tools to route directly to LLM.")
+                declarations = None
+
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
             logger.info("Starting planning loop iteration %d/%d", iteration, self.max_iterations)
 
+            if intent_category in ("CONVERSATION", "KNOWLEDGE"):
+                system_base = (
+                    "You are NOVA, a highly intelligent, premium, and friendly AI assistant (like Jarvis). "
+                    "Always respond in the currently selected response language. "
+                    "Interact with the user in a natural, friendly, warm, and helpful manner. Avoid robotic or dry output. "
+                    "Provide a concise, direct answer in 2 to 4 sentences maximum."
+                )
+            else:
+                system_base = (
+                    "You are NOVA, a highly intelligent, premium, and friendly AI assistant (like Jarvis). "
+                    "Always respond in the currently selected response language. "
+                    "The user's input language is irrelevant to your response language. "
+                    "Never automatically switch languages. Only switch when the user explicitly requests a language switch.\n"
+                    "Interact with the user in a natural, friendly, warm, and helpful manner. Avoid robotic or dry output. "
+                    "Proactively offer helpful suggestions, tips, or guidance depending on what the user is asking.\n"
+                    # FIX-6: Prevent "close X" from routing to web_search
+                    "CRITICAL TOOL ROUTING RULES:\n"
+                    "- If the user says 'close', 'stop', 'kill', or 'terminate' followed by an app or browser name "
+                    "(e.g. 'close YouTube', 'close Chrome', 'stop Notepad') — use browser.close_browser or "
+                    "system_control.close_app. NEVER use web_search for these commands.\n"
+                    "- If the user asks to open a specific website, use browser.open_url, NOT web_search.\n"
+                    "- Only use web_search when the user explicitly asks to search the web, or asks for current "
+                    "news/weather/live information that requires a real-time lookup."
+                )
+            from core.language_session import LanguageSession
+            active_lang = selected_language if selected_language else LanguageSession().selected_language
+            lang_specs = {
+                "en": "Respond ONLY in English. Do not speak in other languages.",
+                "te": "Respond ONLY in Telugu. You must output the entire response text in Telugu script.",
+                "hi": "Respond ONLY in Hindi. You must output the entire response text in Hindi/Devanagari script.",
+                "ta": "Respond ONLY in Tamil. You must output the entire response text in Tamil script.",
+                "kn": "Respond ONLY in Kannada. You must output the entire response text in Kannada script."
+            }
+            lang_spec = lang_specs.get(active_lang, "Respond ONLY in English.")
+            system_instruction = f"{system_base}\n\nselected_language = {active_lang} => {lang_spec}"
+
             # Call provider synchronously to check if a tool call is needed
             start_selection = time.perf_counter()
             try:
+                if stream and not declarations:
+                    chunks = self.provider.generate(
+                        messages=history_payload,
+                        stream=True,
+                        tools=None,
+                        system_instruction=system_instruction,
+                    )
+                    def stream_wrapper():
+                        accumulated = []
+                        for chunk in chunks:
+                            accumulated.append(chunk)
+                            yield chunk
+                        full_txt = "".join(accumulated)
+                        self.memory.add_message(role="assistant", content=full_txt)
+                        logger.info("[Planner] Streaming complete. Response stored in memory.")
+                    return stream_wrapper()
+
                 response = self.provider.generate(
                     messages=history_payload,
                     stream=False,
                     tools=declarations if declarations else None,
+                    system_instruction=system_instruction,
                 )
             except Exception as e:
                 logger.exception("Provider error in planning loop: %s", e)
@@ -226,6 +288,12 @@ class AgentPlanner:
                     tool_name = fc["name"]
                     args = fc["args"]
 
+                    # Specific standard logging
+                    logger.info("[PLANNER]")
+                    logger.info("Intent: %s", tool_name)
+                    logger.info("[EXECUTION]")
+                    logger.info("Tool: %s", tool_name)
+
                     tool = self.registry.get_tool(tool_name)
                     if not tool:
                         result = f"Error: Tool '{tool_name}' is not registered."
@@ -240,14 +308,15 @@ class AgentPlanner:
                             result = self.executor.execute_tool(tool, args)
 
                     # Append execution output back into memory sequentially
-                    self.memory.add_message(role="tool", content=result, name=tool_name)
+                    result_str = str(result)
+                    self.memory.add_message(role="tool", content=result_str, name=tool_name)
                     results.append(result)
 
                     # Add response part to the grouped payload list
                     tool_parts.append({
                         "function_response": {
                             "name": tool_name,
-                            "response": {"result": result}
+                            "response": {"result": result_str}
                         }
                     })
 
@@ -259,7 +328,7 @@ class AgentPlanner:
                         "voice_tts", "system_monitor", "vision", "desktop_automation",
                         "gmail", "calendar", "drive", "document", "android"
                     }
-                    if tool_name in direct_return_tools:
+                    if tool_name in direct_return_tools and selected_language in ("en", "english"):
                         should_direct_return = True
                         direct_response = result
 
@@ -273,23 +342,25 @@ class AgentPlanner:
                 tool_execution_time += time.perf_counter() - start_tool_exec
 
                 # If direct return was triggered, bypass the final LLM reasoning generation request
+                # If direct return was triggered, bypass the final LLM reasoning generation request
                 if should_direct_return:
-                    self.memory.add_message(role="assistant", content=direct_response)
+                    direct_str = str(direct_response)
+                    self.memory.add_message(role="assistant", content=direct_str)
                     total_time = time.perf_counter() - start_planning
                     logger.info(
-                        "[Metrics] Execution breakdown:\n"
-                        "  • Planning / Tool Selection: %.4f seconds\n"
-                        "  • Tool Execution           : %.4f seconds\n"
-                        "  • LLM Response Generation  : %.4f seconds\n"
-                        "  • Total Response Latency   : %.4f seconds",
-                        tool_selection_time,
-                        tool_execution_time,
-                        llm_generation_time,
-                        total_time,
+                         "[Metrics] Execution breakdown:\n"
+                         "  • Planning / Tool Selection: %.4f seconds\n"
+                         "  • Tool Execution           : %.4f seconds\n"
+                         "  • LLM Response Generation  : %.4f seconds\n"
+                         "  • Total Response Latency   : %.4f seconds",
+                         tool_selection_time,
+                         tool_execution_time,
+                         llm_generation_time,
+                         total_time,
                     )
                     if stream:
                         def direct_gen() -> Generator[str, None, None]:
-                            yield direct_response
+                            yield direct_str
                         return direct_gen()
                     return direct_response
 

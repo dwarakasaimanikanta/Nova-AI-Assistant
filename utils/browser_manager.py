@@ -22,7 +22,11 @@ logger = get_logger(__name__)
 class BrowserManager:
     """Controls Chrome/Edge browser sessions over Playwright async API with a dedicated event loop."""
 
+    _instance = None
+
     def __init__(self) -> None:
+        if BrowserManager._instance is None:
+            BrowserManager._instance = self
         self._playwright = None
         self._browser = None
         self._context = None
@@ -98,6 +102,18 @@ class BrowserManager:
         """Uploads files to inputs matching selector."""
         return self._run(self._async_upload_file(selector, file_paths))
 
+    def current_url(self) -> str:
+        """Returns the current page URL."""
+        return self._run(self._async_current_url())
+
+    async def _async_current_url(self) -> str:
+        if self._page and not self._page.is_closed():
+            try:
+                return self._page.url
+            except Exception:
+                pass
+        return ""
+
     def press_key(self, key_name: str) -> str:
         """Simulates pressing a keyboard key."""
         return self._run(self._async_press_key(key_name))
@@ -122,79 +138,111 @@ class BrowserManager:
         """Terminates context page and stops Playwright."""
         return self._run(self._async_close_browser())
 
+    def current_url(self) -> str:
+        """Returns the current page URL."""
+        return self._run(self._async_current_url())
+
     # ------------------------------------------------------------------
     # Async implementation
     # ------------------------------------------------------------------
+    async def _async_current_url(self) -> str:
+        if not self._page or self._page.is_closed():
+            return ""
+        try:
+            return self._page.url
+        except Exception:
+            return ""
 
     async def _async_launch_browser(self, browser_type: str, headless: bool) -> str:
-        try:
-            from playwright.async_api import async_playwright
-
-            logger.info("Initializing Playwright async session...")
-            self._playwright = await async_playwright().start()
-
-            launch_args: dict[str, Any] = {"headless": headless}
-            bt_name = browser_type.lower().strip()
-
-            if bt_name == "chrome":
-                bt = self._playwright.chromium
-                launch_args["channel"] = "chrome"
-            elif bt_name == "edge":
-                bt = self._playwright.chromium
-                launch_args["channel"] = "msedge"
-            elif bt_name == "firefox":
-                bt = self._playwright.firefox
-            elif bt_name == "webkit":
-                bt = self._playwright.webkit
-            else:
-                bt = self._playwright.chromium
-
-            user_data_dir = Path("data/browser_profile")
-            user_data_dir.mkdir(parents=True, exist_ok=True)
-
-            # Auto-load default session state if it exists
-            default_session = Path("data/browser_session.json")
-            if default_session.exists():
-                launch_args["storage_state"] = str(default_session)
-                logger.info("Found default session file. Loading session state...")
-
-            logger.info("Launching Playwright browser %s (headless=%s)...", bt_name, headless)
+        # Phase 20: Force headless=False to always run a visible browser
+        headless = False
+        
+        if self._page and not self._page.is_closed():
+            logger.info("[BROWSER] Browser is already active. Reusing existing session.")
+            return "Success: Reusing active browser session."
+        
+        attempts = 2
+        for attempt in range(attempts):
             try:
-                # Try launching with persistent context first (for session persistence)
-                self._context = await bt.launch_persistent_context(str(user_data_dir), **launch_args)
-                self._page = self._context.pages[0] if self._context.pages else await self._context.new_page()
-                self._browser = None
-                logger.info("Playwright browser launched with persistent context successfully.")
-            except (AttributeError, TypeError, Exception) as e:
-                # Fallback to standard launch (backward compatible for mock testing environments)
-                logger.warning("Persistent context launch not supported or failed: %s. Falling back to standard launch.", e)
-                storage_state_path = launch_args.pop("storage_state", None)
-                self._browser = await bt.launch(**launch_args)
-                
-                context_args = {}
-                if storage_state_path:
-                    context_args["storage_state"] = storage_state_path
-                    
-                self._context = await self._browser.new_context(**context_args)
-                self._context.set_default_timeout(15000)
-                self._page = await self._context.new_page()
-                logger.info("Playwright browser standard launch completed successfully.")
+                from playwright.async_api import async_playwright
 
-            return f"Success: Launched Playwright browser '{bt_name}'."
-        except Exception as e:
-            cleaned_err = "".join([c if ord(c) < 128 else "?" for c in str(e)])
-            logger.error("Playwright launch failed: %s", cleaned_err)
-            return f"Failure: Playwright launch failed: {cleaned_err}"
+                logger.info("[BROWSER] Initializing Playwright async session (attempt %d/%d)...", attempt + 1, attempts)
+                if not self._playwright:
+                    self._playwright = await async_playwright().start()
+
+                launch_args: dict[str, Any] = {"headless": False}
+                bt_name = browser_type.lower().strip()
+
+                if bt_name == "chrome":
+                    bt = self._playwright.chromium
+                    launch_args["channel"] = "chrome"
+                elif bt_name == "edge":
+                    bt = self._playwright.chromium
+                    launch_args["channel"] = "msedge"
+                elif bt_name == "firefox":
+                    bt = self._playwright.firefox
+                elif bt_name == "webkit":
+                    bt = self._playwright.webkit
+                else:
+                    bt = self._playwright.chromium
+
+                user_data_dir = Path("data/browser_profile")
+                user_data_dir.mkdir(parents=True, exist_ok=True)
+
+                # Auto-load default session state if it exists
+                default_session = Path("data/browser_session.json")
+                if default_session.exists():
+                    launch_args["storage_state"] = str(default_session)
+                    logger.info("[BROWSER] Found default session file. Loading session state...")
+
+                logger.info("[BROWSER] Launching Playwright browser %s (visible mode)...", bt_name)
+                try:
+                    # Try launching with persistent context first (for session persistence)
+                    # launch_persistent_context does not support storage_state argument in Playwright Python API
+                    persistent_args = launch_args.copy()
+                    persistent_args.pop("storage_state", None)
+                    self._context = await bt.launch_persistent_context(str(user_data_dir), **persistent_args)
+                    self._page = self._context.pages[0] if self._context.pages else await self._context.new_page()
+                    self._browser = None
+                    logger.info("[BROWSER] Playwright browser launched with persistent context successfully.")
+                except (AttributeError, TypeError, Exception) as e:
+                    # Fallback to standard launch (backward compatible for mock testing environments)
+                    logger.warning("[BROWSER] Persistent context launch failed: %s. Falling back to standard launch.", e)
+                    storage_state_path = launch_args.pop("storage_state", None)
+                    self._browser = await bt.launch(**launch_args)
+                    
+                    context_args = {}
+                    if storage_state_path:
+                        context_args["storage_state"] = storage_state_path
+                        
+                    self._context = await self._browser.new_context(**context_args)
+                    self._page = await self._context.new_page()
+                    logger.info("[BROWSER] Playwright browser standard launch completed successfully.")
+
+                return f"Success: Launched Playwright browser '{bt_name}'."
+            except Exception as e:
+                cleaned_err = "".join([c if ord(c) < 128 else "?" for c in str(e)])
+                logger.error("[BROWSER] Playwright launch failed on attempt %d: %s", attempt + 1, cleaned_err)
+                if attempt == attempts - 1:
+                    return f"Failure: Playwright launch failed: {cleaned_err}"
+                await asyncio.sleep(1.0) # wait before retry
 
     async def _async_open_url(self, url: str) -> str:
-        if not self._page:
-            return "Failure: Browser is not launched. Call launch_browser first."
+        # Auto-launch browser if not open or closed by user
+        if not self._page or self._page.is_closed():
+            logger.info("[BROWSER] Browser is not launched or was closed. Auto-launching visible session...")
+            launch_res = await self._async_launch_browser("chrome", headless=False)
+            if "Failure" in launch_res:
+                # Try fallback browser
+                launch_res = await self._async_launch_browser("chromium", headless=False)
+                if "Failure" in launch_res:
+                    return f"Failure: Auto-launch failed: {launch_res}"
         try:
-            logger.info("Navigating to %s...", url)
+            logger.info("[BROWSER] Navigating to %s...", url)
             await self._page.goto(url, wait_until="load")
             return f"Success: Navigated to '{url}'."
         except Exception as e:
-            logger.error("Failed to navigate to '%s': %s", url, e)
+            logger.error("[BROWSER] Failed to navigate to '%s': %s", url, e)
             return f"Failure: Navigation error: {e}"
 
     async def _async_dismiss_google_consent(self) -> None:
@@ -417,18 +465,12 @@ class BrowserManager:
             if self._context:
                 await self._context.close()
                 
-            if self._browser:
-                self._context = await self._browser.new_context(storage_state=str(path))
-            else:
+            if not self._browser:
+                # Switch to standard launch since persistent contexts don't support loading external session files
                 bt = self._playwright.chromium
-                user_data_dir = Path("data/browser_profile")
-                self._context = await bt.launch_persistent_context(
-                    str(user_data_dir),
-                    storage_state=str(path),
-                    headless=True
-                )
-            
-            self._context.set_default_timeout(15000)
+                self._browser = await bt.launch(headless=True)
+                
+            self._context = await self._browser.new_context(storage_state=str(path))
             self._page = await self._context.new_page()
             return f"Success: Loaded browser session from '{path}'."
         except Exception as e:

@@ -319,7 +319,7 @@ class TestExecutiveAgent:
 
     def test_clarification_response(self):
         agent = self._make_agent()
-        result = agent.execute("hi")
+        result = agent.execute("hm")
         assert "specific" in result.final_response.lower()
         assert result.status == ExecutionStatus.SUCCESS
 

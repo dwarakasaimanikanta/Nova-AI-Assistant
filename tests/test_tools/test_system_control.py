@@ -88,20 +88,23 @@ def test_system_control_power_execution(mock_run: MagicMock) -> None:
     mock_run.assert_any_call(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"], check=True)
 
 
+@patch("shutil.which")
 @patch("subprocess.Popen")
-def test_system_control_launch_app_execution(mock_popen: MagicMock) -> None:
+def test_system_control_launch_app_execution(mock_popen: MagicMock, mock_which: MagicMock) -> None:
     """Ensure launch_app uses Popen asynchronously."""
+    mock_which.side_effect = lambda x: x
     tool = SystemControlTool()
 
     # Safe Notepad launch
     res = tool.execute(action="launch_app", app_name="notepad")
     assert "Success" in res
-    mock_popen.assert_any_call(["notepad.exe"], shell=True)
+    mock_popen.assert_any_call(["notepad.exe"])
 
     # Safe custom launch
     res_custom = tool.execute(action="launch_app", app_name="calc")
     assert "Success" in res_custom
-    mock_popen.assert_any_call(["calc.exe"], shell=True)
+    mock_popen.assert_any_call(["calc.exe"])
+
 
 
 def test_system_control_invalid_and_empty() -> None:

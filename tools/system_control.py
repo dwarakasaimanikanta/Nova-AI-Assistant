@@ -54,90 +54,55 @@ class SystemControlTool(BaseTool):
         # Default risk to HIGH. PermissionGate will override or evaluate dynamically.
         return RiskLevel.HIGH
 
-    def execute(self, **kwargs: Any) -> str:
+    def execute(self, **kwargs: Any) -> "ActionResult":
+        from core.action_result import ActionResult
         action = kwargs.get("action", "").strip()
         if not action:
-            return "Failure: No action parameter specified."
+            return ActionResult(success=False, action="unknown", target="", error="No action parameter specified.")
 
         logger.info("Executing SystemControlTool action: '%s'", action)
 
         if action == "lock_workstation":
             try:
                 subprocess.run(["rundll32.exe", "user32.dll,LockWorkStation"], check=True)
-                return "Success: Workstation locked."
+                return ActionResult(success=True, action=action, target="workstation", details="Workstation locked.")
             except Exception as e:
                 logger.error("Failed to lock workstation: %s", e)
-                return f"Failure: Failed to lock screen: {e}"
+                return ActionResult(success=False, action=action, target="workstation", error=f"Failed to lock screen: {e}")
 
         elif action == "shutdown":
             try:
                 subprocess.run(["shutdown", "/s", "/t", "60"], check=True)
-                return "Success: System shutdown scheduled in 60 seconds."
+                return ActionResult(success=True, action=action, target="system", details="System shutdown scheduled in 60 seconds.")
             except Exception as e:
                 logger.error("Failed to schedule shutdown: %s", e)
-                return f"Failure: Failed to schedule shutdown: {e}"
+                return ActionResult(success=False, action=action, target="system", error=f"Failed to schedule shutdown: {e}")
 
         elif action == "restart":
             try:
                 subprocess.run(["shutdown", "/r", "/t", "60"], check=True)
-                return "Success: System restart scheduled in 60 seconds."
+                return ActionResult(success=True, action=action, target="system", details="System restart scheduled in 60 seconds.")
             except Exception as e:
                 logger.error("Failed to schedule restart: %s", e)
-                return f"Failure: Failed to schedule restart: {e}"
+                return ActionResult(success=False, action=action, target="system", error=f"Failed to schedule restart: {e}")
 
         elif action == "sleep":
             try:
                 subprocess.run(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"], check=True)
-                return "Success: System put to sleep."
+                return ActionResult(success=True, action=action, target="system", details="System put to sleep.")
             except Exception as e:
                 logger.error("Failed to suspend system: %s", e)
-                return f"Failure: Failed to put system to sleep: {e}"
+                return ActionResult(success=False, action=action, target="system", error=f"Failed to put system to sleep: {e}")
 
         elif action == "launch_app":
             app_name = kwargs.get("app_name", "").strip().lower()
             if not app_name:
-                return "Failure: Action 'launch_app' requires an 'app_name' parameter."
-
-            if app_name in ("chrome", "google chrome"):
-                chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-                if not os.path.exists(chrome_path):
-                    return "Google Chrome is not installed."
-                try:
-                    subprocess.Popen([chrome_path], shell=True)
-                    return f"Success: Launched application '{app_name}'."
-                except Exception as e:
-                    logger.error("Failed to launch application '%s': %s", app_name, e)
-                    return f"Failure: Failed to launch '{app_name}': {e}"
-
-            # Common Windows system tools mapping
-            app_map = {
-                "notepad": "notepad.exe",
-                "calc": "calc.exe",
-                "calculator": "calc.exe",
-                "mspaint": "mspaint.exe",
-                "paint": "mspaint.exe",
-                "explorer": "explorer.exe",
-                "taskmgr": "taskmgr.exe",
-                "task manager": "taskmgr.exe",
-                "calendar": "explorer.exe outlookcal:",
-            }
-
-            if app_name not in app_map:
-                # Sanitization check to prevent command injection
-                if not app_name.replace("_", "").isalnum():
-                    return f"Failure: Application '{app_name}' contains invalid characters."
-                cmd = [f"{app_name}.exe"]
-            else:
-                mapped = app_map[app_name]
-                cmd = mapped.split() if " " in mapped else [mapped]
-
-            try:
-                # Start process in background asynchronously so the tool call returns instantly
-                subprocess.Popen(cmd, shell=True)
-                return f"Success: Launched application '{app_name}'."
-            except Exception as e:
-                logger.error("Failed to launch application '%s': %s", app_name, e)
-                return f"Failure: Failed to launch '{app_name}': {e}"
+                return ActionResult(success=False, action=action, target="", error="Action 'launch_app' requires an 'app_name' parameter.")
+            
+            from core.application_controller import ApplicationController
+            return ApplicationController().launch(app_name)
 
         else:
-            return f"Failure: Unknown system action '{action}'."
+            return ActionResult(success=False, action=action, target="", error=f"Unknown system action '{action}'.")
+
+

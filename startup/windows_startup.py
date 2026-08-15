@@ -28,7 +28,10 @@ class WindowsStartup:
             # Command to launch Python with main script in background mode
             cmd = f'"{executable}" "{script_path.resolve()}" --background'
             winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, cmd)
-            winreg.CloseKey(key)
+            try:
+                winreg.CloseKey(key)
+            except TypeError:
+                pass
             logger.info("Successfully registered Nova in Windows Startup Registry.")
             return True
         except Exception as e:
@@ -40,7 +43,10 @@ class WindowsStartup:
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_KEY, 0, winreg.KEY_SET_VALUE)
             winreg.DeleteValue(key, APP_NAME)
-            winreg.CloseKey(key)
+            try:
+                winreg.CloseKey(key)
+            except TypeError:
+                pass
             logger.info("Successfully removed Nova from Windows Startup Registry.")
             return True
         except FileNotFoundError:
@@ -54,7 +60,10 @@ class WindowsStartup:
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_KEY, 0, winreg.KEY_READ)
             winreg.QueryValueEx(key, APP_NAME)
-            winreg.CloseKey(key)
+            try:
+                winreg.CloseKey(key)
+            except TypeError:
+                pass
             return True
         except FileNotFoundError:
             return False

@@ -44,8 +44,10 @@ class ToolExecutor:
         # 2. Execute target tool action inside safety blockades
         try:
             result = tool.execute(**args)
-            logger.debug("Tool '%s' executed successfully. Output length: %d", tool_name, len(result))
+            res_len = len(str(result))
+            logger.debug("Tool '%s' executed successfully. Output length: %d", tool_name, res_len)
             return result
         except Exception as e:
             logger.exception("Error executing tool '%s': %s", tool_name, e)
             return f"Execution Error: Tool '{tool_name}' failed during run: {e}"
+

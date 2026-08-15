@@ -140,16 +140,25 @@ class DesktopAutomationManager:
                 return f"Success: Application with PID {pid} has been closed."
             else:
                 # Close by process image name
-                name = process_name_or_pid
+                name = process_name_or_pid.strip().lower()
+                if "explorer" in name:
+                    if sys.platform == "win32":
+                        cmd = 'powershell -Command "(New-Object -ComObject Shell.Application).Windows() | Where-Object { $_.Name -eq \\"File Explorer\\" -or $_.Name -eq \\"Windows Explorer\\" } | ForEach-Object { $_.Quit() }"'
+                        subprocess.run(cmd, shell=True, check=True)
+                        logger.info("Closed Explorer windows cleanly.")
+                        return "Success: Explorer windows closed."
+                
                 if sys.platform == "win32":
                     # Ensure suffix .exe is appended if missing
-                    if not name.lower().endswith(".exe"):
-                        name += ".exe"
-                    subprocess.run(f"taskkill /F /IM {name}", shell=True, check=True)
+                    if not process_name_or_pid.lower().endswith(".exe"):
+                        pname = process_name_or_pid + ".exe"
+                    else:
+                        pname = process_name_or_pid
+                    subprocess.run(f"taskkill /F /IM {pname}", shell=True, check=True)
                 else:
-                    subprocess.run(f"pkill -f {name}", shell=True, check=True)
-                logger.info("Closed application with process name: %s", name)
-                return f"Success: Application process '{name}' has been closed."
+                    subprocess.run(f"pkill -f {process_name_or_pid}", shell=True, check=True)
+                logger.info("Closed application with process name: %s", process_name_or_pid)
+                return f"Success: Application process '{process_name_or_pid}' has been closed."
         except Exception as e:
             logger.error("Failed to close application '%s': %s", process_name_or_pid, e)
             return f"Failure: Close application error: {e}"

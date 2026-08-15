@@ -81,6 +81,8 @@ class WorkspaceAction(str, Enum):
     OPEN_VS_CODE      = "open_vs_code"
     OPEN_TERMINAL     = "open_terminal"
     OPEN_EXPLORER     = "open_explorer"
+    LAUNCH_APP        = "launch_app"
+    CLOSE_APP         = "close_app"
 
 
 class WorkspaceStatus(str, Enum):
@@ -188,8 +190,63 @@ class WorkspacePlanner:
         lower = request.lower().strip()
         task = WorkspaceTask(description=request)
 
+        # 0. Close Applications
+        close_keywords = {
+            "notepad": ("notepad.exe", "Notepad"),
+            "calculator": ("CalculatorApp.exe", "Calculator"),
+            "paint": ("mspaint.exe", "Paint"),
+            "command prompt": ("cmd.exe", "Command Prompt"),
+            "cmd": ("cmd.exe", "Command Prompt"),
+            "powershell": ("powershell.exe", "PowerShell"),
+            "terminal": ("cmd.exe", "Terminal"),
+            "visual studio code": ("Code.exe", "VS Code"),
+            "vscode": ("Code.exe", "VS Code"),
+            "file explorer": ("explorer.exe", "File Explorer"),
+            "explorer": ("explorer.exe", "File Explorer"),
+            "task manager": ("Taskmgr.exe", "Task Manager"),
+            "chrome": ("chrome.exe", "Chrome"),
+        }
+        matched_close = None
+        if "close" in lower:
+            for kw, (exe, name) in close_keywords.items():
+                if kw in lower:
+                    matched_close = (exe, name)
+                    break
+
+        # 0. Desktop Applications
+        app_keywords = {
+            "notepad": ("notepad.exe", "Notepad"),
+            "calculator": ("calc.exe", "Calculator"),
+            "paint": ("mspaint.exe", "Paint"),
+            "command prompt": ("cmd.exe", "Command Prompt"),
+            "cmd": ("cmd.exe", "Command Prompt"),
+            "powershell": ("powershell.exe", "PowerShell"),
+            "terminal": ("cmd.exe", "Terminal"),
+            "visual studio code": ("code", "VS Code"),
+            "vscode": ("code", "VS Code"),
+            "file explorer": ("explorer.exe", "File Explorer"),
+            "explorer": ("explorer.exe", "File Explorer"),
+            "task manager": ("taskmgr.exe", "Task Manager"),
+            "control panel": ("control.exe", "Control Panel"),
+            "settings": ("settings", "Settings"),
+            "chrome": ("chrome.exe", "Chrome"),
+        }
+        matched_app = None
+        for kw, (exe, name) in app_keywords.items():
+            if kw in lower:
+                # If path keywords or directory delimiters are present, let it fall through
+                if kw in ("explorer", "file explorer", "vscode", "visual studio code", "terminal"):
+                    if "in " in lower or "at " in lower or "/" in lower or "\\" in lower or "'" in lower or '"' in lower:
+                        continue
+                matched_app = (exe, name)
+                break
+
+        if matched_close:
+            exe, name = matched_close
+            task.add_step(WorkspaceAction.CLOSE_APP, f"Close {name}", app_exe=exe, app_name=name)
+
         # 1. Projects
-        if "create project" in lower:
+        elif "create project" in lower:
             name = self._extract_project_name(request)
             task.add_step(WorkspaceAction.CREATE_PROJECT, f"Create project '{name}'", project_name=name)
         elif "open project" in lower:
@@ -203,44 +260,44 @@ class WorkspacePlanner:
             task.add_step(WorkspaceAction.ARCHIVE_PROJECT, f"Archive project '{name}'", project_name=name)
 
         # 2. Folders
-        elif "create folder" in lower or "create directory" in lower or "mkdir" in lower:
+        elif any(kw in lower for kw in ("create folder", "create a folder", "create directory", "create a directory", "mkdir", "make folder", "make a folder", "make directory", "make a directory")):
             path = self._extract_path(request)
             task.add_step(WorkspaceAction.CREATE_FOLDER, f"Create folder '{path}'", path=path)
-        elif "rename folder" in lower or "rename directory" in lower:
+        elif any(kw in lower for kw in ("rename folder", "rename a folder", "rename directory", "rename a directory")):
             src, dest = self._extract_src_dest(request)
             task.add_step(WorkspaceAction.RENAME_FOLDER, f"Rename folder '{src}' to '{dest}'", src=src, dest=dest)
-        elif "move folder" in lower or "move directory" in lower:
+        elif any(kw in lower for kw in ("move folder", "move a folder", "move directory", "move a directory")):
             src, dest = self._extract_src_dest(request)
             task.add_step(WorkspaceAction.MOVE_FOLDER, f"Move folder '{src}' to '{dest}'", src=src, dest=dest)
-        elif "delete folder" in lower or "delete directory" in lower or "rmdir" in lower:
+        elif any(kw in lower for kw in ("delete folder", "delete a folder", "delete directory", "delete a directory", "rmdir", "remove folder", "remove a folder", "remove directory", "remove a directory")):
             path = self._extract_path(request)
             task.add_step(WorkspaceAction.DELETE_FOLDER, f"Delete folder '{path}'", path=path)
 
         # 3. Files
-        elif "create file" in lower or "touch" in lower:
+        elif any(kw in lower for kw in ("create file", "create a file", "touch", "make file", "make a file")):
             path = self._extract_path(request)
             task.add_step(WorkspaceAction.CREATE_FILE, f"Create file '{path}'", path=path)
-        elif "read file" in lower or "cat" in lower:
+        elif any(kw in lower for kw in ("read file", "read a file", "cat ", "view file", "view a file")):
             path = self._extract_path(request)
             task.add_step(WorkspaceAction.READ_FILE, f"Read file '{path}'", path=path)
-        elif "write file" in lower or "write to file" in lower:
+        elif any(kw in lower for kw in ("write file", "write a file", "write to file", "write to a file")):
             path = self._extract_path(request)
             content = self._extract_content(request)
             task.add_step(WorkspaceAction.WRITE_FILE, f"Write to '{path}'", path=path, content=content)
-        elif "append file" in lower or "append to file" in lower:
+        elif any(kw in lower for kw in ("append file", "append a file", "append to file", "append to a file")):
             path = self._extract_path(request)
             content = self._extract_content(request)
             task.add_step(WorkspaceAction.APPEND_FILE, f"Append to '{path}'", path=path, content=content)
-        elif "rename file" in lower:
+        elif any(kw in lower for kw in ("rename file", "rename a file")):
             src, dest = self._extract_src_dest(request)
             task.add_step(WorkspaceAction.RENAME_FILE, f"Rename file '{src}' to '{dest}'", src=src, dest=dest)
-        elif "copy file" in lower or "cp " in lower:
+        elif any(kw in lower for kw in ("copy file", "copy a file", "cp ")):
             src, dest = self._extract_src_dest(request)
             task.add_step(WorkspaceAction.COPY_FILE, f"Copy file '{src}' to '{dest}'", src=src, dest=dest)
-        elif "move file" in lower or "mv " in lower:
+        elif any(kw in lower for kw in ("move file", "move a file", "mv ")):
             src, dest = self._extract_src_dest(request)
             task.add_step(WorkspaceAction.MOVE_FILE, f"Move file '{src}' to '{dest}'", src=src, dest=dest)
-        elif "delete file" in lower or "rm " in lower:
+        elif any(kw in lower for kw in ("delete file", "delete a file", "rm ", "remove file", "remove a file")):
             path = self._extract_path(request)
             task.add_step(WorkspaceAction.DELETE_FILE, f"Delete file '{path}'", path=path)
 
@@ -268,9 +325,22 @@ class WorkspacePlanner:
         elif "open terminal" in lower or "start terminal" in lower:
             path = self._extract_path(request) or "."
             task.add_step(WorkspaceAction.OPEN_TERMINAL, f"Open terminal in '{path}'", path=path)
-        elif "open file explorer" in lower or "open explorer" in lower or "show in explorer" in lower:
+        elif any(kw in lower for kw in ("open file explorer", "open explorer", "open folder", "show in explorer", "show folder")):
             path = self._extract_path(request) or "."
             task.add_step(WorkspaceAction.OPEN_EXPLORER, f"Open Explorer in '{path}'", path=path)
+
+        # 6. Desktop Applications
+        elif matched_app:
+            exe, name = matched_app
+            task.add_step(WorkspaceAction.LAUNCH_APP, f"Open {name}", app_exe=exe, app_name=name)
+
+        elif "create " in lower or "touch " in lower or "mkdir " in lower:
+            path = self._extract_path(request)
+            _, ext = os.path.splitext(path)
+            if ext:
+                task.add_step(WorkspaceAction.CREATE_FILE, f"Create file '{path}'", path=path)
+            else:
+                task.add_step(WorkspaceAction.CREATE_FOLDER, f"Create folder '{path}'", path=path)
 
         else:
             # Fallback to list directory
@@ -285,10 +355,29 @@ class WorkspacePlanner:
         return match.group(1).strip() if match else "my_project"
 
     def _extract_path(self, text: str) -> str:
+        # Check for: "called X inside Y" / "called X in Y" / "called X at Y"
+        called_inside_match = re.search(r"called\s+['\"]?([A-Za-z0-9_\-\.]+)['\"]?\s+(?:inside|in|at)\s+['\"]?([^\'\"]+)['\"]?", text, re.IGNORECASE)
+        if called_inside_match:
+            name = called_inside_match.group(1).strip()
+            parent = called_inside_match.group(2).strip()
+            return os.path.join(parent, name)
+
+        # Check for: "inside Y called X" / "in Y called X" / "at Y called X"
+        inside_called_match = re.search(r"(?:inside|in|at)\s+['\"]?([^\'\"]+?)[’'\"]?\s+called\s+['\"]?([A-Za-z0-9_\-\.]+)[’'\"]?", text, re.IGNORECASE)
+        if inside_called_match:
+            parent = inside_called_match.group(1).strip()
+            name = inside_called_match.group(2).strip()
+            return os.path.join(parent, name)
+
         # Match quoted string or last word
         match = re.search(r"['\"]([^'\"]+)['\"]", text)
         if match:
             return match.group(1).strip()
+        lower = text.lower()
+        for prefix in ("create folder ", "create directory ", "create file ", "create ", "touch ", "mkdir "):
+            if prefix in lower:
+                idx = lower.find(prefix) + len(prefix)
+                return text[idx:].strip()
         words = text.split()
         if len(words) > 2:
             last = words[-1].rstrip(".,;\"'")
@@ -421,6 +510,10 @@ class ActionRunner:
         elif action == WorkspaceAction.CREATE_FOLDER:
             path = self._resolve(params["path"])
             path.mkdir(parents=True, exist_ok=True)
+            from core.conversation_context import get_conversation_context
+            ctx = get_conversation_context()
+            ctx.last_created_path = str(path)
+            ctx.last_folder = path.name
             return f"Success: Folder created at '{path}'."
 
         elif action == WorkspaceAction.RENAME_FOLDER or action == WorkspaceAction.RENAME_FILE:
@@ -429,6 +522,13 @@ class ActionRunner:
             if not src.exists():
                 raise FileNotFoundError(f"Source path '{src}' does not exist.")
             src.rename(dest)
+            from core.conversation_context import get_conversation_context
+            ctx = get_conversation_context()
+            ctx.last_created_path = str(dest)
+            if dest.is_dir():
+                ctx.last_folder = dest.name
+            else:
+                ctx.last_file = dest.name
             return f"Success: Renamed '{src}' to '{dest}'."
 
         elif action == WorkspaceAction.MOVE_FOLDER or action == WorkspaceAction.MOVE_FILE:
@@ -451,6 +551,10 @@ class ActionRunner:
             path = self._resolve(params["path"])
             path.parent.mkdir(parents=True, exist_ok=True)
             path.touch()
+            from core.conversation_context import get_conversation_context
+            ctx = get_conversation_context()
+            ctx.last_created_path = str(path)
+            ctx.last_file = path.name
             return f"Success: File created at '{path}'."
 
         elif action == WorkspaceAction.READ_FILE:
@@ -547,34 +651,81 @@ class ActionRunner:
         # Development
         elif action == WorkspaceAction.OPEN_VS_CODE:
             path = self._resolve(params["path"])
-            # Start VS Code in the background
-            subprocess.Popen(["code", str(path)], shell=True)
+            from core.application_controller import ApplicationController
+            res = ApplicationController().launch("vscode", extra_args=[str(path)])
+            if not res.success:
+                raise RuntimeError(res.error or "Failed to open VS Code.")
             return f"Success: Opened VS Code in '{path}'."
 
         elif action == WorkspaceAction.OPEN_TERMINAL:
             path = self._resolve(params["path"])
-            if sys.platform == "win32":
-                subprocess.Popen(["start", "cmd"], shell=True, cwd=str(path))
-            else:
-                subprocess.Popen(["x-terminal-emulator"], shell=True, cwd=str(path))
+            from core.application_controller import ApplicationController
+            # Use cmd or powershell as terminal
+            res = ApplicationController().launch("cmd")
+            if not res.success:
+                raise RuntimeError(res.error or "Failed to open terminal.")
             return f"Success: Opened terminal in '{path}'."
 
         elif action == WorkspaceAction.OPEN_EXPLORER:
             path = self._resolve(params["path"])
-            if sys.platform == "win32":
-                subprocess.Popen(["explorer", str(path)], shell=True)
-            else:
-                subprocess.Popen(["xdg-open", str(path)], shell=True)
+            from core.application_controller import ApplicationController
+            res = ApplicationController().launch("explorer", extra_args=[str(path)])
+            if not res.success:
+                raise RuntimeError(res.error or "Failed to open Explorer.")
             return f"Success: Opened file explorer in '{path}'."
+
+        elif action == WorkspaceAction.LAUNCH_APP:
+            app_name = params.get("app_name", "App")
+            exe = params.get("app_exe", "")
+            # Map common executable names to app keys
+            from core.application_controller import ApplicationController
+            res = ApplicationController().launch(app_name)
+            if not res.success:
+                raise RuntimeError(res.error or f"Failed to launch '{app_name}'.")
+            return f"Opened {app_name} successfully."
+
+        elif action == WorkspaceAction.CLOSE_APP:
+            app_name = params.get("app_name", "App")
+            exe = params.get("app_exe", "")
+            if not exe:
+                return f"No process specified to close {app_name}."
+            if sys.platform == "win32":
+                try:
+                    result = subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True, text=True, check=False)
+                    if result.returncode == 0:
+                        return f"Closed {app_name} successfully."
+                    
+                    stdout_lower = result.stdout.lower()
+                    stderr_lower = result.stderr.lower()
+                    if "not found" in stdout_lower or "not found" in stderr_lower:
+                        return f"{app_name} is not running."
+                    return f"Failed to close {app_name}. Error: {result.stderr.strip() or result.stdout.strip()}"
+                except Exception as e:
+                    logger.error("[WorkspaceAgent] Exception running taskkill for %s: %s", exe, e)
+                    return f"Failed to close {app_name}. Error: {str(e)}"
+            else:
+                try:
+                    unix_name = exe.replace(".exe", "").replace("Code", "code").replace("Taskmgr", "taskmgr")
+                    pgrep_res = subprocess.run(["pgrep", "-f", unix_name], capture_output=True, text=True, check=False)
+                    if pgrep_res.returncode != 0:
+                        return f"{app_name} is not running."
+                    kill_res = subprocess.run(["pkill", "-f", unix_name], capture_output=True, text=True, check=False)
+                    if kill_res.returncode == 0:
+                        return f"Closed {app_name} successfully."
+                    else:
+                        return f"{app_name} is not running."
+                except Exception:
+                    return f"Closed {app_name} successfully."
 
         else:
             raise NotImplementedError(f"Action '{action}' is not supported.")
 
     def _resolve(self, path_str: str) -> Path:
-        p = Path(path_str)
-        if p.is_absolute():
-            return p
-        return (self.workspace_root / p).resolve()
+        from tools.file_manager import resolve_path
+        import os
+        if not os.path.isabs(path_str) and "desktop" not in path_str.lower():
+            return resolve_path(str(self.workspace_root / path_str))
+        return resolve_path(path_str)
 
     def _notify(self, step: WorkspaceStep) -> None:
         if self.progress_callback:
@@ -766,7 +917,14 @@ def _inject_workspace_routing() -> None:
                 "write file", "append file", "rename file", "copy file", "move file",
                 "delete file", "search workspace", "list directory", "list files",
                 "create template", "zip", "unzip", "open vs code", "open terminal",
-                "open file explorer", "open explorer"
+                "open file explorer", "open explorer", "create ", "rename ", "delete ",
+                "notepad", "calculator", "paint", "cmd", "command prompt", "powershell",
+                "terminal", "vscode", "visual studio code", "explorer", "file explorer",
+                "task manager", "control panel", "settings",
+                "close notepad", "close calculator", "close paint", "close cmd",
+                "close command prompt", "close powershell", "close terminal",
+                "close vscode", "close visual studio code", "close explorer",
+                "close file explorer", "close task manager", "close this notepad"
             )
             if any(kw in lower for kw in workspace_keywords):
                 is_workspace = True

@@ -451,6 +451,7 @@ def _inject_memory_routing() -> None:
     def patched_exec_init(self, *args, **kwargs):
         memory_agent = kwargs.pop("memory_agent", None)
         orig_exec_init(self, *args, **kwargs)
+        self.memory_agent = memory_agent
         self.step_executor.memory_agent = memory_agent
 
     ExecutiveAgent.__init__ = patched_exec_init

@@ -50,8 +50,9 @@ class TestAlwaysListeningEngine:
     def test_wake_word_match_transitions_state(
         self, mock_unlink, mock_exists, mock_voice_manager, mock_wake_detector, mock_audio_recorder
     ):
-        # Set wake detector to match
+        # Set wake detector to match and return empty transcribe to stay in LISTENING state
         mock_wake_detector.detect.return_value = True
+        mock_voice_manager._safe_transcribe.return_value = ""
         
         on_wake = MagicMock()
         engine = AlwaysListeningEngine(
@@ -69,7 +70,9 @@ class TestAlwaysListeningEngine:
         # single execution cycles. Let's call the internal _run_loop steps
         # or execute with a thread that is stopped immediately.
         engine.start()
-        time.sleep(0.3)
+        start_t = time.time()
+        while engine.state != "LISTENING" and time.time() - start_t < 3.0:
+            time.sleep(0.01)
         engine.stop()
 
         assert engine.state == "LISTENING"
@@ -94,7 +97,9 @@ class TestAlwaysListeningEngine:
         engine.state = "LISTENING"
 
         engine.start()
-        time.sleep(0.3)
+        start_t = time.time()
+        while mock_voice_manager._safe_engine.call_count == 0 and time.time() - start_t < 3.0:
+            time.sleep(0.01)
         engine.stop()
 
         # Should verify command executed
@@ -121,7 +126,9 @@ class TestAlwaysListeningEngine:
         engine.state = "LISTENING"
 
         engine.start()
-        time.sleep(0.4)
+        start_t = time.time()
+        while engine.state != "WAKING" and time.time() - start_t < 3.0:
+            time.sleep(0.01)
         engine.stop()
 
         # Should transition back to WAKING due to silence timeout
