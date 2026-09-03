@@ -1,160 +1,512 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NOVA - Neural Online Virtual Assistant</title>
-  <!-- Google Fonts for futuristic HUD styling -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="NOVA – Neural Online Virtual Assistant. A premium AI assistant powered by Google Gemini.">
+  <meta name="theme-color" content="#0a0f1e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>NOVA – Neural Online Virtual Assistant</title>
+
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Highlight.js for code syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" id="hljs-theme">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <!-- Marked.js for Markdown rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+
+  <!-- Firebase SDKs (v10 Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+  <script src="firebase-config.js?v=20260903"></script>
+
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Sci-fi background grid/glow overlay -->
-  <div class="bg-scanline"></div>
-  <div class="bg-grid"></div>
-  <div class="bg-ambient-glow"></div>
+  <!-- Ambient background effects -->
+  <div class="bg-gradient-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
 
-  <div class="app-container">
-    <!-- TOP BAR HUD -->
-    <header class="top-bar">
-      <div class="logo-section">
-        <div class="reactor-mini-glow"></div>
-        <span class="logo-text">NOVA <span class="logo-sub">v1.0.0</span></span>
-      </div>
-      <div class="status-section">
-        <div class="status-indicator animate-pulse" id="status-dot"></div>
-        <span class="status-text" id="status-label">INITIALIZING...</span>
-      </div>
-      <div class="controls-section">
-        <!-- Language selector -->
-        <select id="language-select" class="hud-select">
-          <option value="en">ENGLISH (EN)</option>
-          <option value="te">తెలుగు (TE)</option>
-          <option value="hi">हिन्दी (HI)</option>
-          <option value="ta">தமிழ் (TA)</option>
-          <option value="kn">ಕನ್ನಡ (KN)</option>
-        </select>
-        <!-- Speech Synthesis Toggle -->
-        <button id="tts-toggle" class="hud-btn active" title="Mute/Unmute Speech Synthesis">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+  <div class="app-layout">
+    <!-- ===================== LEFT SIDEBAR ===================== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-inner">
+        <!-- Sidebar Header -->
+        <div class="sidebar-header">
+          <div class="logo-group">
+            <div class="logo-icon">
+              <svg viewBox="0 0 32 32" fill="none">
+                <circle cx="16" cy="16" r="14" stroke="url(#logoGrad)" stroke-width="2"/>
+                <circle cx="16" cy="16" r="8" stroke="url(#logoGrad)" stroke-width="1.5" opacity="0.6"/>
+                <circle cx="16" cy="16" r="3" fill="url(#logoGrad)"/>
+                <defs>
+                  <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32">
+                    <stop offset="0%" stop-color="#00e5ff"/>
+                    <stop offset="100%" stop-color="#00ff88"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+            <div class="logo-text-group">
+              <span class="logo-name">NOVA</span>
+              <span class="logo-tagline">AI Assistant</span>
+            </div>
+          </div>
+          <button class="sidebar-close-btn" id="sidebar-close-btn" title="Close sidebar" aria-label="Close sidebar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- New Chat Button -->
+        <button class="new-chat-btn" id="new-chat-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
+          <span>New Chat</span>
         </button>
-      </div>
-    </header>
 
-    <!-- MAIN BODY -->
-    <main class="main-frame">
-      <!-- LEFT SECTION: Circular Hologram Core -->
-      <section class="hologram-panel">
-        <div class="hologram-viewport">
-          <canvas id="holo-canvas" width="600" height="600"></canvas>
-          <!-- Floating interactive status rings -->
-          <div class="canvas-overlay-text">
-            <span class="system-title">CORE STATUS</span>
-            <span class="system-value" id="core-state-val">ACTIVE</span>
+        <!-- Search -->
+        <div class="sidebar-search">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="search-chats" placeholder="Search conversations..." autocomplete="off">
+        </div>
+
+        <!-- Chat Lists -->
+        <div class="chat-lists-container" id="chat-lists-container">
+          <!-- Pinned Chats Section -->
+          <div class="chat-section pinned-section" id="pinned-section" style="display:none;">
+            <div class="section-label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14">
+                <path d="M12 2l1.5 5.5L19 9l-4 3.5L16.5 18 12 15l-4.5 3 1.5-5.5L5 9l5.5-1.5z"/>
+              </svg>
+              <span>Pinned</span>
+            </div>
+            <div class="chat-list" id="pinned-chat-list"></div>
+          </div>
+
+          <!-- Recent Chats Section -->
+          <div class="chat-section recent-section" id="recent-section">
+            <div class="section-label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span>Recent</span>
+            </div>
+            <div class="chat-list" id="recent-chat-list"></div>
           </div>
         </div>
-      </section>
 
-      <!-- RIGHT SECTION: Chat Window -->
-      <section class="chat-panel">
-        <div class="chat-header">
-          <h2>COMMUNICATION FEED</h2>
-          <span class="feed-indicator">SYNC: CLOUD</span>
+        <!-- Sidebar Footer -->
+        <div class="sidebar-footer">
+          <!-- Theme Toggle -->
+          <button class="sidebar-footer-btn" id="theme-toggle-btn" title="Toggle theme">
+            <svg class="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <svg class="theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none;">
+              <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+            <span>Theme</span>
+          </button>
+          <!-- Language Selector -->
+          <div class="sidebar-footer-btn lang-select-wrapper">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18">
+              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+            <select id="language-select" aria-label="Select language">
+              <option value="en">English</option>
+              <option value="te">తెలుగు</option>
+              <option value="hi">हिन्दी</option>
+              <option value="ta">தமிழ்</option>
+              <option value="kn">ಕನ್ನಡ</option>
+            </select>
+          </div>
         </div>
-        
-        <div class="chat-messages" id="chat-messages-container">
-          <!-- Initial greeting bubble -->
-          <div class="message assistant-msg">
-            <div class="msg-bubble">
-              <p>NOVA online. Web interfaces synchronized. Ready to assist, Boss.</p>
-              <span class="msg-time" id="greeting-time">23:52</span>
+      </div>
+    </aside>
+
+    <!-- Sidebar Overlay for Mobile -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- ===================== MAIN CHAT AREA ===================== -->
+    <main class="main-content">
+      <!-- Top Navigation Bar -->
+      <header class="top-nav">
+        <div class="top-nav-left">
+          <button class="hamburger-btn" id="hamburger-btn" title="Open sidebar" aria-label="Open sidebar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
+          <div class="current-chat-title" id="current-chat-title">New Chat</div>
+        </div>
+        <div class="top-nav-right">
+          <div class="status-badge" id="status-badge">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-label">READY</span>
+          </div>
+          <!-- TTS Toggle -->
+          <button class="nav-icon-btn" id="tts-toggle" title="Toggle speech output">
+            <svg class="tts-on-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            </svg>
+            <svg class="tts-off-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+            </svg>
+          </button>
+
+          <!-- User Profile & Auth Widget -->
+          <div class="user-profile-wrapper" id="user-profile-wrapper">
+            <button class="user-avatar-btn" id="user-avatar-btn" title="Account profile" aria-label="Account profile">
+              <img class="user-avatar-img" id="user-avatar-img" src="" alt="User" style="display:none;">
+              <span class="user-avatar-initials" id="user-avatar-initials">?</span>
+            </button>
+            <div class="user-profile-dropdown" id="user-profile-dropdown" style="display:none;">
+              <div class="dropdown-user-info">
+                <div class="dropdown-user-avatar" id="dropdown-user-avatar">?</div>
+                <div class="dropdown-user-details">
+                  <div class="dropdown-user-name" id="dropdown-user-name">Guest User</div>
+                  <div class="dropdown-user-email" id="dropdown-user-email">Sign in to sync your chats</div>
+                  <div class="dropdown-user-badge" id="dropdown-user-badge" style="display:none;">
+                    <span class="badge-dot"></span> <span id="dropdown-badge-text">Verified</span>
+                  </div>
+                </div>
+              </div>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item-btn" id="dropdown-auth-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                <span id="dropdown-auth-btn-text">Sign In</span>
+              </button>
+              <button class="dropdown-item-btn danger" id="dropdown-logout-btn" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <span>Sign Out</span>
+              </button>
             </div>
           </div>
         </div>
+      </header>
 
-        <div class="chat-input-area">
-          <div class="input-wrapper">
-            <input type="text" id="user-input" placeholder="Transmit command query..." autocomplete="off">
-            
-            <!-- Voice Dictation Button -->
-            <button id="mic-btn" class="input-action-btn" title="Activate voice transcript">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                <line x1="12" y1="19" x2="12" y2="22"></line>
+      <!-- Chat Messages Container -->
+      <div class="chat-container" id="chat-container">
+        <!-- Welcome Screen (shown for new/empty chats) -->
+        <div class="welcome-screen" id="welcome-screen">
+          <div class="welcome-logo">
+            <div class="welcome-core-ring">
+              <canvas id="mini-holo-canvas" width="200" height="200"></canvas>
+            </div>
+          </div>
+          <h1 class="welcome-title">Hello, I'm <span class="gradient-text">NOVA</span></h1>
+          <p class="welcome-subtitle">Neural Online Virtual Assistant — How can I help you today?</p>
+          <div class="welcome-suggestions">
+            <button class="suggestion-chip" data-prompt="Explain quantum computing in simple terms">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              <span>Explain quantum computing</span>
+            </button>
+            <button class="suggestion-chip" data-prompt="Write a Python function to sort a list using merge sort">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              <span>Write a merge sort in Python</span>
+            </button>
+            <button class="suggestion-chip" data-prompt="What are the latest trends in AI and machine learning?">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span>Latest AI trends</span>
+            </button>
+            <button class="suggestion-chip" data-prompt="Help me draft a professional email to my team about a project update">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              <span>Draft a professional email</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Messages will be rendered here -->
+        <div class="messages-list" id="messages-list"></div>
+      </div>
+
+      <!-- File/Image Preview Area (shown before sending) -->
+      <div class="attachment-preview" id="attachment-preview" style="display:none;">
+        <div class="attachment-items" id="attachment-items"></div>
+      </div>
+
+      <!-- Chat Input Area -->
+      <div class="chat-input-wrapper">
+        <!-- Search Mode Selector -->
+        <div class="mode-selector" id="mode-selector">
+          <button class="mode-btn active" data-mode="auto" id="mode-auto" title="AUTO: NOVA decides when to search the web">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="13" height="13"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>AUTO</span>
+          </button>
+          <button class="mode-btn" data-mode="web" id="mode-web" title="WEB: Always search the web for current info">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="13" height="13"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span>WEB</span>
+          </button>
+          <button class="mode-btn" data-mode="ai" id="mode-ai" title="AI: Direct Gemini response, no web search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="13" height="13"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <span>AI</span>
+          </button>
+        </div>
+        <div class="chat-input-container" id="chat-input-container">
+          <div class="input-actions-left">
+            <!-- Image Upload -->
+            <button class="input-icon-btn" id="image-upload-btn" title="Upload image">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
               </svg>
             </button>
-            
+            <input type="file" id="image-input" accept="image/*" style="display:none;">
+
+            <!-- File Upload -->
+            <button class="input-icon-btn" id="file-upload-btn" title="Upload file (PDF, TXT, DOCX)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <input type="file" id="file-input" accept=".pdf,.txt,.docx,.doc,.md,.csv,.json" style="display:none;">
+          </div>
+
+          <textarea id="user-input" placeholder="Message NOVA..." rows="1" autocomplete="off"></textarea>
+
+          <div class="input-actions-right">
+            <!-- Voice Input -->
+            <button class="input-icon-btn" id="mic-btn" title="Voice input">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="22"/>
+              </svg>
+            </button>
+
             <!-- Send Button -->
-            <button id="send-btn" class="input-action-btn" title="Send message">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="22" y1="2" x2="11" y2="13"></line>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            <button class="send-btn" id="send-btn" title="Send message" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
               </svg>
             </button>
           </div>
         </div>
-      </section>
+        <p class="input-disclaimer">NOVA uses Gemini AI with optional Google Search. Verify important information.</p>
+      </div>
     </main>
-
-    <!-- CAPABILITIES MODAL / INFO SECTION -->
-    <div class="system-notes-bar">
-      <div class="notes-header">
-        <svg class="icon note-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="16" x2="12" y2="12"></line>
-          <line x1="12" y1="8" x2="12.01" y2="8"></line>
-        </svg>
-        <span>DEPLOYMENT MODE: VERCEL SERVERLESS CLOUD</span>
-      </div>
-      <div class="notes-grid">
-        <div class="note-card success-card">
-          <h4>WEB ENABLED</h4>
-          <ul>
-            <li>Gemini Conversational Intelligence (1.5 Flash)</li>
-            <li>In-Browser Voice Dictation (STT)</li>
-            <li>In-Browser Speech Synthesis (TTS)</li>
-            <li>Responsive Interface (Desktop/Mobile)</li>
-          </ul>
-        </div>
-        <div class="note-card warning-card">
-          <h4>DESKTOP ONLY</h4>
-          <ul>
-            <li>PortAudio mic processing & offline Whisper</li>
-            <li>Piper offline Speech generation</li>
-            <li>Local system commands, file edits, & apps launch</li>
-            <li>PyQt6 holographic canvas desktop renderer</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <!-- BOTTOM STATS HUD -->
-    <footer class="bottom-hud">
-      <div class="stat-card">
-        <span class="stat-label">LLM BACKEND</span>
-        <span class="stat-value text-cyan">GEMINI 1.5</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">NETWORK STATE</span>
-        <span class="stat-value text-green" id="network-val">ONLINE</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">AUDIO SOURCE</span>
-        <span class="stat-value text-amber" id="audio-source-val">BROWSER MIC</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">SYS FRAME RATE</span>
-        <span class="stat-value text-cyan">60 FPS</span>
-      </div>
-    </footer>
   </div>
 
-  <script src="app.js"></script>
+  <!-- ===================== AUTHENTICATION MODAL ===================== -->
+  <div class="auth-modal-overlay" id="auth-modal-overlay" style="display:none;">
+    <div class="auth-card" id="auth-card">
+      <button class="auth-close-btn" id="auth-close-btn" title="Close" aria-label="Close modal" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+
+      <!-- Auth Header -->
+      <div class="auth-header">
+        <div class="auth-logo-badge">
+          <svg viewBox="0 0 32 32" fill="none" width="28" height="28">
+            <circle cx="16" cy="16" r="14" stroke="url(#authLogoGrad)" stroke-width="2"/>
+            <circle cx="16" cy="16" r="8" stroke="url(#authLogoGrad)" stroke-width="1.5" opacity="0.6"/>
+            <circle cx="16" cy="16" r="3" fill="url(#authLogoGrad)"/>
+            <defs>
+              <linearGradient id="authLogoGrad" x1="0" y1="0" x2="32" y2="32">
+                <stop offset="0%" stop-color="#00e5ff"/>
+                <stop offset="100%" stop-color="#00ff88"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h2 class="auth-title" id="auth-modal-title">Welcome to NOVA</h2>
+        <p class="auth-subtitle" id="auth-modal-subtitle">Sign in or create an account to start using NOVA AI</p>
+      </div>
+
+      <!-- Auth Tabs -->
+      <div class="auth-tabs" id="auth-tabs">
+        <button class="auth-tab-btn active" id="tab-login" data-tab="login">Sign In</button>
+        <button class="auth-tab-btn" id="tab-register" data-tab="register">Sign Up</button>
+      </div>
+
+      <!-- Google Sign In Button -->
+      <div class="google-auth-container" id="google-auth-container">
+        <button class="google-sign-in-btn" id="google-sign-in-btn" type="button">
+          <svg class="google-icon" viewBox="0 0 24 24" width="20" height="20">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          <span>Continue with Google</span>
+        </button>
+        <div class="auth-divider">
+          <span>OR CONTINUE WITH EMAIL</span>
+        </div>
+      </div>
+
+      <!-- Error / Alert Banner -->
+      <div class="auth-alert" id="auth-alert" style="display:none;"></div>
+
+      <!-- Tab 1: Login Form -->
+      <form class="auth-form" id="login-form">
+        <div class="auth-field">
+          <label for="login-email">Email Address</label>
+          <div class="input-with-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <input type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
+          </div>
+        </div>
+        <div class="auth-field">
+          <div class="field-header">
+            <label for="login-password">Password</label>
+            <a href="#" class="forgot-pwd-link" id="forgot-pwd-link">Forgot?</a>
+          </div>
+          <div class="input-with-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+            <button type="button" class="pwd-toggle-btn" data-target="login-password" title="Show/hide password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <button class="auth-submit-btn" id="login-submit-btn" type="submit">
+          <span>Sign In to NOVA</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </form>
+
+      <!-- Tab 2: Register Form -->
+      <form class="auth-form" id="register-form" style="display:none;">
+        <div class="auth-field">
+          <label for="reg-name">Full Name</label>
+          <div class="input-with-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <input type="text" id="reg-name" placeholder="John Doe" required autocomplete="name">
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="reg-email">Email Address</label>
+          <div class="input-with-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <input type="email" id="reg-email" placeholder="you@example.com" required autocomplete="email">
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="reg-password">Password (min. 6 characters)</label>
+          <div class="input-with-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input type="password" id="reg-password" placeholder="••••••••" required minlength="6" autocomplete="new-password">
+            <button type="button" class="pwd-toggle-btn" data-target="reg-password" title="Show/hide password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="auth-field">
+          <label for="reg-confirm-password">Confirm Password</label>
+          <div class="input-with-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input type="password" id="reg-confirm-password" placeholder="••••••••" required minlength="6" autocomplete="new-password">
+            <button type="button" class="pwd-toggle-btn" data-target="reg-confirm-password" title="Show/hide password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <button class="auth-submit-btn" id="register-submit-btn" type="submit">
+          <span>Create Account & Send Verification</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </form>
+
+      <!-- View 3: Email Verification Required Screen -->
+      <div class="verification-view" id="verification-view" style="display:none;">
+        <div class="verification-icon-circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="2" width="36" height="36">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+        </div>
+        <h3 class="verify-title">Verify Your Email Address</h3>
+        <p class="verify-desc">
+          Verification email sent. Please check your inbox and verify your email.
+        </p>
+        <div class="verify-email-box">
+          <span class="verify-email-text" id="verify-email-display">user@example.com</span>
+        </div>
+        <p class="verify-note">
+          Click the verification link sent to your email to activate full access to NOVA. After verifying, click the button below:
+        </p>
+        
+        <div class="verify-actions">
+          <button class="verify-primary-btn" id="check-verified-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>I Have Verified My Email (Check Status)</span>
+          </button>
+          <button class="verify-secondary-btn" id="resend-email-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            <span id="resend-btn-text">Resend Verification Email</span>
+          </button>
+          <button class="verify-link-btn" id="verify-logout-btn">
+            Sign out and use another account
+          </button>
+        </div>
+      </div>
+
+      <!-- View 4: Forgot Password Form -->
+      <form class="auth-form" id="forgot-pwd-form" style="display:none;">
+        <h3 class="forgot-title">Reset Your Password</h3>
+        <p class="forgot-desc">Enter your email and we'll send you a link to reset your password.</p>
+        <div class="auth-field">
+          <label for="reset-email">Email Address</label>
+          <div class="input-with-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <input type="email" id="reset-email" placeholder="you@example.com" required autocomplete="email">
+          </div>
+        </div>
+        <button class="auth-submit-btn" id="reset-submit-btn" type="submit">
+          <span>Send Password Reset Link</span>
+        </button>
+        <button class="back-to-login-btn" id="back-to-login-btn" type="button">
+          Back to Sign In
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Login Welcome Notification Banner -->
+  <div class="login-welcome-banner" id="login-welcome-banner" style="display:none;">
+    <div class="welcome-banner-content">
+      <div class="welcome-banner-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      </div>
+      <div class="welcome-banner-text">
+        <strong id="welcome-banner-title">You have logged in to NOVA AI Assistant!</strong>
+        <span id="welcome-banner-sub">Nuvu NOVA ane AI Assistant ane app loo login ayyavu.</span>
+      </div>
+      <button class="welcome-banner-close" id="welcome-banner-close" aria-label="Close">&times;</button>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div class="modal-overlay" id="modal-overlay" style="display:none;">
+    <div class="modal-dialog">
+      <div class="modal-icon" id="modal-icon"></div>
+      <h3 class="modal-title" id="modal-title">Confirm Action</h3>
+      <p class="modal-message" id="modal-message">Are you sure?</p>
+      <div class="modal-actions">
+        <button class="modal-btn modal-btn-cancel" id="modal-cancel-btn">Cancel</button>
+        <button class="modal-btn modal-btn-confirm" id="modal-confirm-btn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="app.js?v=20260903_FIREBASE_AUTH"></script>
 </body>
 </html>

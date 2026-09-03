@@ -10,6 +10,22 @@
       "use": "@vercel/python"
     },
     {
+      "src": "api/generate_image.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/search_images.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/live_info.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/generate_document.py",
+      "use": "@vercel/python"
+    },
+    {
       "src": "public/**",
       "use": "@vercel/static"
     }
@@ -22,6 +38,38 @@
     {
       "src": "/api/chat",
       "dest": "api/chat.py"
+    },
+    {
+      "src": "/api/generate-image",
+      "dest": "api/generate_image.py"
+    },
+    {
+      "src": "/api/generate_image",
+      "dest": "api/generate_image.py"
+    },
+    {
+      "src": "/api/search-images",
+      "dest": "api/search_images.py"
+    },
+    {
+      "src": "/api/search_images",
+      "dest": "api/search_images.py"
+    },
+    {
+      "src": "/api/live_info",
+      "dest": "api/live_info.py"
+    },
+    {
+      "src": "/api/live-info",
+      "dest": "api/live_info.py"
+    },
+    {
+      "src": "/api/generate_document",
+      "dest": "api/generate_document.py"
+    },
+    {
+      "src": "/api/generate-document",
+      "dest": "api/generate_document.py"
     },
     {
       "src": "/(.*)",

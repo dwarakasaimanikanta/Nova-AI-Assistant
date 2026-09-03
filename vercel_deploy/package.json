@@ -1,0 +1,9 @@
+{
+  "name": "nova-ai-assistant-web",
+  "version": "3.0.0",
+  "private": true,
+  "description": "NOVA AI Assistant - Web Platform",
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}

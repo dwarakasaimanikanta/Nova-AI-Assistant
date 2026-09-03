@@ -1,1 +1,17 @@
-.vercel
+# --- Secrets & Environment Variables ---
+.env
+.env.local
+.env.*
+!.env.example
+serviceAccountKey.json
+credentials.json
+
+# --- Hosting & Cloud Frameworks ---
+.vercel/
+.firebase/
+node_modules/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyc

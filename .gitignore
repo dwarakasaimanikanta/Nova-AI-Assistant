@@ -1,42 +1,55 @@
-# --- Secrets ---
+# --- Secrets & Environment Variables ---
 .env
+.env.local
+.env.*
+!.env.example
+serviceAccountKey.json
+credentials.json
+*.key
+*.pem
+*.token
 
 # --- Python ---
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
 *.egg-info/
 .eggs/
 build/
 dist/
+*.pyc
+*.pyo
+*.pyd
 
-# --- Virtual environments ---
+# --- Virtual Environments ---
 venv/
 .venv/
 env/
+.venv_working_backup/
 
-# --- Runtime data (local only, never committed) ---
+# --- Hosting & Cloud Frameworks ---
+.vercel/
+.firebase/
+node_modules/
+
+# --- Runtime Data & Logs ---
 data/*
 !data/.gitkeep
 logs/*
 !logs/.gitkeep
+voice_models/
 
-# --- IDE / editor ---
+# --- IDE & OS Cache ---
 .vscode/
 .idea/
 *.swp
-
-# --- OS ---
+*.swo
 .DS_Store
 Thumbs.db
 
-# --- Testing ---
+# --- Testing & Code Coverage ---
 .pytest_cache/
 .coverage
 htmlcov/
 
-.venv_working_backup/
-
-voice_models/
-.vercel

@@ -1,178 +1,138 @@
-# 🤖 Nova AI Assistant
+# NOVA AI Assistant
 
-Nova is a highly responsive, professional AI desktop assistant built in Python. Designed to orchestrate memory, modular skills, and specialized tools, Nova seamlessly interfaces with the physical and digital worlds through natural voice interaction. Powered by Google Gemini and offline voice processing, Nova offers intelligent desktop automation, browser control, and Android phone integration.
+A modern, full-stack AI-powered personal assistant featuring conversational AI, multi-provider failover, voice interaction, real-time web search grounding, image generation, document synthesis, and secure Firebase authentication.
+
+🌐 **Live Web App**: [https://verceldeploy-eight-kappa.vercel.app](https://verceldeploy-eight-kappa.vercel.app)
 
 ---
 
-## ✨ Features
+## 🚀 Features
 
-- **🗣️ Wake Word Detection**: High-performance wake word engine supporting rapid, fuzzy-matching ("Nova", "Noba", "Nover", etc.) with sub-second latency.
-- **🔄 Continuous Conversation**: Multi-turn conversation mode where "Hey Nova" is required only once. It prompts in natural Telugu and continues listening until explicitly stopped or timed out.
-- **🇮🇳 Bilingual Voice Support**: Detects and responds in English and Telugu seamlessly.
-- **📱 Android Phone Integration**: Extensible bridge to run Android actions including Call, SMS, and WhatsApp messaging via verified automation tools.
-- **🔌 Wireless ADB Support**: Auto-connects to saved wireless debugging targets on startup.
-- **🌐 Browser Automation**: Native capabilities to launch web pages, perform Google searches, and extract information.
-- **🔍 Contact Name Correction**: Integrated fuzzy-matching layer that auto-corrects spoken contact names (e.g., *Emma -> Amma*, *Ama -> Amma*, *Ravy -> Ravi*, *అమ్మ -> Amma*) using similarity scoring prior to execution.
-- **⚙️ Graceful Shutdown**: Complete lifecycle management that safely terminates background loops, thread pools, and active sessions on `Ctrl+C`.
-- **🧩 Modular Plugin Architecture**: Dynamically discovers and loads external plugins to extend Nova's tool registry.
+- **Conversational AI**: Context-aware natural language conversations with support for multilingual queries (English, Telugu, Hindi, Tamil, Kannada).
+- **Google Gemini Integration**: Primary engine utilizing Google Gemini models (`gemini-3.6-flash`, `gemini-3.7-flash`) with Google Search grounding.
+- **Groq Ultra-Fast Fallback**: Automatic instant failover to Groq (`openai/gpt-oss-120b`, `llama-3.3-70b-versatile`) when rate limits or quota boundaries are encountered.
+- **Google Sign-In**: One-click secure authentication with Google OAuth via real Firebase Authentication.
+- **Email & Password Authentication**: Full account registration and login flow.
+- **Email Verification**: Automated email verification link dispatch with verification enforcement before granting assistant access.
+- **Private User-Based Chat History**: Chat histories and sessions are strictly scoped to the user's Firebase UID (`nova_conversations_{uid}`), ensuring complete data privacy across accounts.
+- **Voice Assistant (STT & TTS)**:
+  - **Speech-to-Text**: Real-time microphone voice input directly transcribing user speech.
+  - **Text-to-Speech**: Natural, animated voice response synthesis with toggleable controls.
+- **AI Image Generation**: Photorealistic text-to-image synthesis with intelligent Romanized Telugu/English prompt enhancement powered by Pollinations.ai.
+- **Web & Entity Search**: Real-time factual web grounding via DuckDuckGo and high-confidence celebrity/entity image search via Wikipedia & Wikimedia.
+- **PDF & Document Generation**: On-the-fly generation and compilation of styled PDF (ReportLab) and DOCX (python-docx) files.
+- **PDF & File Explanation**: Client-side document text extraction and AI explanation for PDF, TXT, DOCX, and Markdown files.
+- **Chat Management**: Session pinning, renaming, individual chat deletion, search filtering, and conversation export.
+- **Responsive Cyberpunk UI**: Sleek dark-mode glassmorphism interface with custom neon animations, soundwave visualizers, and mobile optimization.
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Core Engine**: Python 3.11+
-- **AI Planning & Chat**: Google Gemini API (`gemini-3.5-flash-lite`) / Local Ollama (e.g. `llama3`)
-- **Speech-to-Text**: Faster Whisper / Whisper API
-- **Web Automation**: Playwright
-- **Android Bridging**: Android Debug Bridge (ADB)
-- **Fuzzy Matching**: RapidFuzz / Difflib
+### Frontend
+- **HTML5 & Semantic Elements**
+- **Modern Vanilla CSS3**: Custom design tokens, glassmorphic backdrop filters, cyber-neon lighting, responsive grid layouts
+- **Vanilla JavaScript (ES6+)**: DOM state controllers, Web Speech API, Marked.js, Highlight.js
+- **Firebase Web SDK (v10)**: Real-time authentication client
+
+### Backend & Serverless
+- **Python 3.12**: Microservice architecture designed for Vercel Serverless Functions
+- **Google GenAI SDK (`google-genai`)**: Gemini API integration and multimodal processing
+- **ReportLab**: Programmatic PDF document layout engine
+- **python-docx**: DOCX file parser and generator
+- **python-dotenv**: Environment configuration manager
+
+### Cloud & AI Infrastructure
+- **Hosting**: Vercel Serverless Platform
+- **Authentication**: Firebase Authentication
+- **AI Providers**: Google AI Studio (Gemini), Groq Cloud
+- **Image Generation**: Pollinations.ai
 
 ---
 
-## 📂 Project Structure
+## 🔐 Authentication & Security
 
-```text
-nova/
-├── core/          # Central orchestration (NovaEngine, AgentPlanner, Tool registry)
-├── plugins/       # Extensible plugin directory (AndroidPlugin, BrowserPlugin, etc.)
-├── skills/        # Pluggable offline capabilities (Calculator, SystemInfo, Help)
-├── voice/         # Audio recording, wake word detection, speech-to-text, and TTS
-├── memory/        # Short-term and SQLite vector database memory stores
-├── tools/         # Integrated tools (ADB, Playwright, Terminal, Permission Gate)
-├── interface/     # Command line and interactive loop interfaces
-├── data/          # Application configuration templates and contacts databases
-├── tests/         # Unit and integration test suites
-├── main.py        # Main entry point
-└── config.py      # Environment and global configuration variables
-```
+- **Google OAuth**: Fast and secure Google sign-in with automatic identity verification.
+- **Email Verification**: Protects against spam registrations by requiring verification links before unlocking assistant features.
+- **Session Persistence**: Secure Firebase local session management (`Auth.Persistence.LOCAL`).
+- **Data Isolation**: Each user's conversations and settings are isolated per Firebase UID in storage.
+- **Zero Password Storage**: Passwords are handled exclusively by Firebase identity servers and never touch local application storage.
 
 ---
 
-## 🚀 Installation
+## 🌐 Live Demo
+
+Experience NOVA live in your browser:
+🔗 **[https://verceldeploy-eight-kappa.vercel.app](https://verceldeploy-eight-kappa.vercel.app)**
+
+---
+
+## 📦 Installation & Local Setup
 
 ### Prerequisites
-- Python 3.11 or newer
-- Android Debug Bridge (ADB) in system PATH (for phone automation)
-- Sound Card / Microphone input devices
+- **Python 3.10+**
+- **Node.js 18+** (for Vercel CLI deployment)
+- API Keys for **Google Gemini** and/or **Groq**
 
-### Step-by-Step Setup
+### 1. Clone the Repository
+```bash
+git clone https://github.com/dwarakasaimanikanta/Nova-AI-Assistant.git
+cd Nova-AI-Assistant
+```
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/dwarakasaimanikanta/Nova-AI-Assistant.git
-   cd nova
-   ```
+### 2. Set Up Environment Variables
+Create a `.env` file in the root and in `vercel_deploy/`:
+```bash
+cp .env.example .env
+cp vercel_deploy/.env.example vercel_deploy/.env
+```
 
-2. **Configure a Python virtual environment**:
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate      # Windows PowerShell/Command Prompt
-   source .venv/bin/activate   # macOS/Linux
-   ```
+Edit `.env` and add your API keys:
+```env
+PRIMARY_PROVIDER=gemini
+PRIMARY_MODEL=gemini-3.6-flash
+GEMINI_API_KEY=your_actual_gemini_api_key_here
+FALLBACK_PROVIDER=groq
+GROQ_API_KEY=your_actual_groq_api_key_here
+```
 
-3. **Install project dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 3. Install Backend Dependencies
+```bash
+pip install -r vercel_deploy/requirements.txt
+```
 
-4. **Prepare local environment variables**:
-   Create a `.env` file in the root directory:
-   ```env
-   GEMINI_API_KEY=your_gemini_api_key_here
-   VOICE_INPUT_ENABLED=True
-   WAKE_WORD_ENABLED=True
-   VOICE_MODEL_SIZE=tiny
-   ```
-
-5. **Prepare contacts configuration**:
-   Ensure `data/contacts.json` is set up with your mobile contacts list:
-   ```json
-   {
-     "amma": "+917842209762",
-     "Dad": "+919247475161"
-   }
-   ```
+### 4. Run Locally
+You can run the local server from the `vercel_deploy` directory:
+```bash
+cd vercel_deploy
+python server.py
+```
+Open your browser and navigate to `http://localhost:8000`.
 
 ---
 
-## 💻 Usage
+## ⚠️ Environment Variables
 
-Start Nova in interactive mode:
-```bash
-python main.py
-```
-
-### Example Voice Commands
-* `"Hey Nova"` (Triggers wake mode)
-* `"Open Chrome"`
-* `"Call Amma"` / `"Ammaకి కాల్ చేయి"`
-* `"YouTube open cheyi"`
-* `"Search AI news"`
-* `"Message Ravi Hello"`
-* `"Bye"` / `"సరే"` (Exits continuous mode)
+| Variable | Required | Description |
+| :--- | :---: | :--- |
+| `GEMINI_API_KEY` | **Yes** (Primary) | API key from [Google AI Studio](https://aistudio.google.com/) |
+| `GROQ_API_KEY` | **Recommended** | API key from [Groq Console](https://console.groq.com/) for zero-latency failover |
+| `OPENROUTER_API_KEY` | Optional | Secondary multi-model fallback key |
+| `OPENAI_API_KEY` | Optional | OpenAI key if using GPT-4o as fallback |
+| `SERPER_API_KEY` | Optional | Serper.dev Google Search key |
 
 ---
 
 ## 📸 Screenshots
 
-*Coming Soon.*
+*(Add your screenshots here)*
 
----
-
-## 🗺️ Roadmap
-
-- **🧠 Memory**: Vector-backed semantic memory integration to remember user preferences across sessions.
-- **👁️ Vision**: Image description and multi-modal integration.
-- **📧 Email**: Direct email creation, routing, and checking plugins.
-- **📅 Calendar**: Google and Outlook calendar task scheduling and event sync.
-- **🦙 Local LLM**: Offline execution fallback utilizing local Ollama instances.
-- **👥 Multi-Agent Support**: Distributed agent delegation for complex workflows.
-
----
-
-## 🌐 Vercel Web Deployment
-
-NOVA is also available as a lightweight web deployment on Vercel, providing a responsive holographic dashboard and Gemini-powered conversational assistant.
-
-### 🚀 Live Demo
-
-**[Launch NOVA Web App](https://nova-ai-command.vercel.app/)**
-
-### Web vs. Desktop Feature Matrix
-
-| Feature | Web Deployment (Vercel) | Local Desktop App |
-|---------|-------------------------|-------------------|
-| **Conversational AI** | Yes — Google Gemini | Yes — Gemini & Ollama |
-| **Multilingual Support** | Yes | Yes |
-| **In-Browser Mic (STT)** | Yes | Desktop voice system |
-| **In-Browser Audio (TTS)** | Yes | Local TTS |
-| **Holographic Visual HUD** | Yes | Yes |
-| **Local App Execution** | No | Yes |
-| **Local File Operations** | No | Yes |
-| **System Control** | No | Yes |
-| **ADB / Android Automation** | No | Yes |
-
-### Deployment Architecture
-
-The Vercel version uses an isolated lightweight deployment directory:
-
-```text
-vercel_deploy/
-├── api/
-├── public/
-├── requirements.txt
-└── vercel.json
-```
-
-The desktop NOVA application, local AI models, voice models, databases, logs, virtual environments, and other local resources are not included in the Vercel deployment.
-
-### Important
-
-The Vercel web version is a cloud-based conversational interface. Desktop-only capabilities such as local application launching, local file operations, system control, Ollama-based local inference, and ADB/Android automation remain available in the local desktop version.
+| Main Chat Interface | Glassmorphic Authentication |
+| :---: | :---: |
+| `![NOVA Interface](screenshots/chat_preview.png)` | `![NOVA Auth](screenshots/auth_preview.png)` |
 
 ---
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
-
+This project is open source and available under the [MIT License](LICENSE).
